@@ -29,15 +29,14 @@ ${BUCKET}             generated
 *** Test Cases ***
 
 List buckets
-    ${expectedUser}     Execute             ps -o user= -p 1
-                        Should Be Equal     ${expectedUser}       testuser
-    ${result} =         Execute AWSS3APICli     list-buckets
+    ${expectedUser}     Execute                ps -o user= -p 1
+    ${result} =         Execute AWSS3APICli    list-buckets
     ${bucket_names} =   Execute                echo '''${result}''' | jq -r '.Buckets[].Name'
-    Should contain      ${bucket_names}         ${BUCKET}
+    Should contain      ${bucket_names}        ${BUCKET}
     ${ownerId} =        Execute                echo '''${result}''' | jq -r '.Owner.ID'
-    Should contain      ${ownerId}             om
-    ${ownerDisplayName} =   Execute                echo '''${result}''' | jq -r '.Owner.DisplayName'
-    Should contain      ${ownerDisplayName}     om
+    Should contain      ${ownerId}             ${expectedUser}
+    ${ownerDisplayName}=Execute            echo '''${result}''' | jq -r '.Owner.DisplayName'
+    Should contain      ${ownerDisplayName}    ${expectedUser}
 
 
 Get bucket info with Ozone Shell to check the owner field
