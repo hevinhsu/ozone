@@ -33,9 +33,9 @@ List buckets
     ${bucket_names} =   Execute                echo '''${result}''' | jq -r '.Buckets[].Name'
     Should contain      ${bucket_names}         ${BUCKET}
     ${ownerId} =        Execute                echo '''${result}''' | jq -r '.Owner.ID'
-    Should contain      ${ownerId}             hadoop
+    Should contain      ${ownerId}             om
     ${ownerDisplayName} =   Execute                echo '''${result}''' | jq -r '.Owner.DisplayName'
-    Should contain      ${ownerDisplayName}     hadoop
+    Should contain      ${ownerDisplayName}     om
 
 
 Get bucket info with Ozone Shell to check the owner field
