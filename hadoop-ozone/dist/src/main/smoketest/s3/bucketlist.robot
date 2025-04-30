@@ -29,6 +29,8 @@ ${BUCKET}             generated
 *** Test Cases ***
 
 List buckets
+    ${expectedUser}     Execute.             ps -o user= -p 1
+                        Should Be Equal     ${expectedUser}       testuser
     ${result} =         Execute AWSS3APICli     list-buckets
     ${bucket_names} =   Execute                echo '''${result}''' | jq -r '.Buckets[].Name'
     Should contain      ${bucket_names}         ${BUCKET}
