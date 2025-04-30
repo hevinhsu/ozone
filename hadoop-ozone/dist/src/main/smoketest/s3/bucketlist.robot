@@ -35,7 +35,7 @@ List buckets
     Should contain      ${bucket_names}        ${BUCKET}
     ${ownerId} =        Execute                echo '''${result}''' | jq -r '.Owner.ID'
     Should contain      ${ownerId}             ${expectedUser}
-    ${ownerDisplayName}=Execute            echo '''${result}''' | jq -r '.Owner.DisplayName'
+    ${ownerDisplayName} = Execute              echo '''${result}''' | jq -r '.Owner.DisplayName'
     Should contain      ${ownerDisplayName}    ${expectedUser}
 
 
