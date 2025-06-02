@@ -18,29 +18,29 @@
 package org.apache.hadoop.ozone.s3.endpoint;
 
 import static org.apache.hadoop.ozone.s3.exception.S3ErrorTable.ACCESS_DENIED;
-import static org.junit.jupiter.api.Assertions.*;
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 
 import java.io.IOException;
+import javax.ws.rs.core.HttpHeaders;
+import javax.ws.rs.core.Response;
 import org.apache.hadoop.ozone.client.OzoneBucket;
 import org.apache.hadoop.ozone.client.OzoneClient;
 import org.apache.hadoop.ozone.client.OzoneClientStub;
 import org.apache.hadoop.ozone.s3.exception.OS3Exception;
 import org.junit.jupiter.api.BeforeAll;
-import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
-import javax.ws.rs.core.HttpHeaders;
-import javax.ws.rs.core.Response;
 
 /**
  * Test delete object.
  */
 public class TestObjectDelete {
 
-  private static ObjectEndpoint REST = new ObjectEndpoint();
-  private static OzoneBucket BUCKET;
+  private static ObjectEndpoint rest = new ObjectEndpoint();
+  private static OzoneBucket bucket;
   private static final String BUCKET_NAME = "b1";
   private static final String KEY = "key1";
 
@@ -48,8 +48,8 @@ public class TestObjectDelete {
   public static void setUp() throws Exception {
     OzoneClient client = new OzoneClientStub();
     client.getObjectStore().createS3Bucket(BUCKET_NAME);
-    BUCKET = client.getObjectStore().getS3Bucket("b1");
-    REST = EndpointBuilder.newObjectEndpointBuilder()
+    bucket = client.getObjectStore().getS3Bucket("b1");
+    rest = EndpointBuilder.newObjectEndpointBuilder()
         .setClient(client)
         .build();
   }
@@ -57,13 +57,13 @@ public class TestObjectDelete {
   @Test
   public void delete() throws IOException, OS3Exception {
     //GIVEN
-    BUCKET.createKey(KEY, 0).close();
+    bucket.createKey(KEY, 0).close();
 
     //WHEN
-    REST.delete(BUCKET_NAME, KEY, null, null);
+    rest.delete(BUCKET_NAME, KEY, null, null);
 
     //THEN
-    assertFalse(BUCKET.listKeys("").hasNext(),
+    assertFalse(bucket.listKeys("").hasNext(),
         "Bucket Should not contain any key after delete");
   }
 
@@ -72,8 +72,8 @@ public class TestObjectDelete {
     HttpHeaders headers = mock(HttpHeaders.class);
     when(headers.getHeaderString(BucketOwnerCondition.EXPECTED_BUCKET_OWNER))
         .thenReturn("defaultOwner");
-    REST.setHeaders(headers);
-    Response response = REST.delete(BUCKET_NAME, KEY, null, null);
+    rest.setHeaders(headers);
+    Response response = rest.delete(BUCKET_NAME, KEY, null, null);
     assertEquals(204, response.getStatus());
   }
 
@@ -82,10 +82,10 @@ public class TestObjectDelete {
     HttpHeaders headers = mock(HttpHeaders.class);
     when(headers.getHeaderString(BucketOwnerCondition.EXPECTED_BUCKET_OWNER))
         .thenReturn("wrongOwner");
-    REST.setHeaders(headers);
+    rest.setHeaders(headers);
 
     OS3Exception exception =
-        assertThrows(OS3Exception.class, () -> REST.delete(BUCKET_NAME, KEY, null, null));
+        assertThrows(OS3Exception.class, () -> rest.delete(BUCKET_NAME, KEY, null, null));
 
     assertEquals(ACCESS_DENIED.getMessage(), exception.getMessage());
   }

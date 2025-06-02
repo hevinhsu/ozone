@@ -17,7 +17,6 @@
 
 package org.apache.hadoop.ozone.s3.endpoint;
 
-
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
 import static org.junit.jupiter.api.Assertions.assertThrows;
@@ -29,6 +28,9 @@ import org.apache.hadoop.ozone.om.exceptions.OMException;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
+/**
+ * Unit test class for testing logic related to BucketOwnerCondition.
+ */
 public class TestBucketOwnerCondition {
 
   private HttpHeaders headers;
@@ -77,7 +79,8 @@ public class TestBucketOwnerCondition {
   public void testCopyOperationFailedOnSourceBucketOwner() {
     when(headers.getHeaderString(BucketOwnerCondition.EXPECTED_SOURCE_BUCKET_OWNER)).thenReturn("source");
     when(headers.getHeaderString(BucketOwnerCondition.EXPECTED_BUCKET_OWNER)).thenReturn("dest");
-    OMException exception = assertThrows(OMException.class, () -> BucketOwnerCondition.verifyCopyOperation(headers, "wrong", "dest"));
+    OMException exception =
+        assertThrows(OMException.class, () -> BucketOwnerCondition.verifyCopyOperation(headers, "wrong", "dest"));
     assertThat(exception).hasMessageContaining(BucketOwnerCondition.ERROR_MESSAGE);
   }
 
@@ -85,7 +88,8 @@ public class TestBucketOwnerCondition {
   public void testCopyOperationFailedOnDestBucketOwner() {
     when(headers.getHeaderString(BucketOwnerCondition.EXPECTED_SOURCE_BUCKET_OWNER)).thenReturn("source");
     when(headers.getHeaderString(BucketOwnerCondition.EXPECTED_BUCKET_OWNER)).thenReturn("dest");
-    OMException exception = assertThrows(OMException.class, () -> BucketOwnerCondition.verifyCopyOperation(headers, "source", "wrong"));
+    OMException exception =
+        assertThrows(OMException.class, () -> BucketOwnerCondition.verifyCopyOperation(headers, "source", "wrong"));
     assertThat(exception).hasMessageContaining(BucketOwnerCondition.ERROR_MESSAGE);
   }
 }

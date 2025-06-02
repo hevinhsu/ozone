@@ -18,7 +18,9 @@
 package org.apache.hadoop.ozone.s3.endpoint;
 
 import static java.nio.charset.StandardCharsets.UTF_8;
-import static org.apache.hadoop.ozone.s3.exception.S3ErrorTable.*;
+import static org.apache.hadoop.ozone.s3.exception.S3ErrorTable.ACCESS_DENIED;
+import static org.apache.hadoop.ozone.s3.exception.S3ErrorTable.INVALID_ARGUMENT;
+import static org.apache.hadoop.ozone.s3.exception.S3ErrorTable.INVALID_TAG;
 import static org.apache.hadoop.ozone.s3.util.S3Consts.COPY_SOURCE_HEADER;
 import static org.apache.hadoop.ozone.s3.util.S3Consts.CUSTOM_METADATA_COPY_DIRECTIVE_HEADER;
 import static org.apache.hadoop.ozone.s3.util.S3Consts.CUSTOM_METADATA_HEADER_PREFIX;
@@ -198,8 +200,8 @@ class TestObjectPut {
         new ByteArrayInputStream(CONTENT.getBytes(UTF_8));
     long dataSize = CONTENT.length();
 
-    OS3Exception exception =
-        assertThrows(OS3Exception.class, () -> objectEndpoint.put(BUCKET_NAME, KEY_NAME, dataSize, 1, null, null, null, body));
+    OS3Exception exception = assertThrows(OS3Exception.class,
+        () -> objectEndpoint.put(BUCKET_NAME, KEY_NAME, dataSize, 1, null, null, null, body));
 
     assertEquals(ACCESS_DENIED.getMessage(), exception.getMessage());
   }

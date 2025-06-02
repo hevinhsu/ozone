@@ -17,14 +17,12 @@
 
 package org.apache.hadoop.ozone.s3.awssdk.v2;
 
+import java.io.IOException;
 import org.apache.hadoop.hdds.conf.OzoneConfiguration;
 import org.apache.hadoop.hdds.scm.ScmConfigKeys;
 import org.apache.hadoop.ozone.OzoneConfigKeys;
 import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.BeforeAll;
-
-import java.io.IOException;
-
 
 /**
  * Tests the AWS S3 SDK basic operations with OM Ratis enabled and Streaming Write Pipeline.

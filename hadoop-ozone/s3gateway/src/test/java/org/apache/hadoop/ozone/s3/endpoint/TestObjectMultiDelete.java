@@ -19,7 +19,9 @@ package org.apache.hadoop.ozone.s3.endpoint;
 
 import static java.util.Collections.singleton;
 import static org.apache.hadoop.ozone.s3.exception.S3ErrorTable.ACCESS_DENIED;
-import static org.junit.jupiter.api.Assertions.*;
+import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 
@@ -45,21 +47,20 @@ import org.junit.jupiter.api.Test;
 public class TestObjectMultiDelete {
 
   public static final String BUCKET_NAME = "b1";
-  private static OzoneBucket BUCKET;
-  private static BucketEndpoint REST;
-
+  private static OzoneBucket bucket;
+  private static BucketEndpoint rest;
 
   @BeforeAll
   public static void setUp() throws Exception {
     OzoneClient client = new OzoneClientStub();
     client.getObjectStore().createS3Bucket(BUCKET_NAME);
 
-    BUCKET = client.getObjectStore().getS3Bucket(BUCKET_NAME);
-    BUCKET.createKey("key1", 0).close();
-    BUCKET.createKey("key2", 0).close();
-    BUCKET.createKey("key3", 0).close();
+    bucket = client.getObjectStore().getS3Bucket(BUCKET_NAME);
+    bucket.createKey("key1", 0).close();
+    bucket.createKey("key2", 0).close();
+    bucket.createKey("key3", 0).close();
 
-    REST = EndpointBuilder.newBucketEndpointBuilder()
+    rest = EndpointBuilder.newBucketEndpointBuilder()
         .setClient(client)
         .build();
   }
@@ -73,10 +74,10 @@ public class TestObjectMultiDelete {
     mdr.getObjects().add(new DeleteObject("key4"));
 
     //WHEN
-    MultiDeleteResponse response = REST.multiDelete(BUCKET_NAME, "", mdr, null);
+    MultiDeleteResponse response = rest.multiDelete(BUCKET_NAME, "", mdr, null);
 
     //THEN
-    Set<String> keysAtTheEnd = Sets.newHashSet(BUCKET.listKeys("")).stream()
+    Set<String> keysAtTheEnd = Sets.newHashSet(bucket.listKeys("")).stream()
         .map(OzoneKey::getName)
         .collect(Collectors.toSet());
 
@@ -99,10 +100,10 @@ public class TestObjectMultiDelete {
     mdr.getObjects().add(new DeleteObject("key4"));
 
     //WHEN
-    MultiDeleteResponse response = REST.multiDelete(BUCKET_NAME, "", mdr, null);
+    MultiDeleteResponse response = rest.multiDelete(BUCKET_NAME, "", mdr, null);
 
     //THEN
-    Set<String> keysAtTheEnd = Sets.newHashSet(BUCKET.listKeys("")).stream()
+    Set<String> keysAtTheEnd = Sets.newHashSet(bucket.listKeys("")).stream()
         .map(OzoneKey::getName)
         .collect(Collectors.toSet());
 
@@ -123,7 +124,7 @@ public class TestObjectMultiDelete {
     mdr.getObjects().add(new DeleteObject("key2"));
     mdr.getObjects().add(new DeleteObject("key4"));
 
-    assertDoesNotThrow(() -> REST.multiDelete(BUCKET_NAME, "", mdr, headers));
+    assertDoesNotThrow(() -> rest.multiDelete(BUCKET_NAME, "", mdr, headers));
   }
 
   @Test
@@ -138,7 +139,7 @@ public class TestObjectMultiDelete {
     mdr.getObjects().add(new DeleteObject("key4"));
 
     OS3Exception exception =
-        assertThrows(OS3Exception.class, () -> REST.multiDelete(BUCKET_NAME, "", mdr, headers));
+        assertThrows(OS3Exception.class, () -> rest.multiDelete(BUCKET_NAME, "", mdr, headers));
 
     assertEquals(ACCESS_DENIED.getMessage(), exception.getMessage());
   }

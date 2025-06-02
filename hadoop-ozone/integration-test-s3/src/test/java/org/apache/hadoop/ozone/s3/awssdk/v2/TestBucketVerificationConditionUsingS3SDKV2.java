@@ -17,17 +17,17 @@
 
 package org.apache.hadoop.ozone.s3.awssdk.v2;
 
+import java.io.IOException;
 import org.apache.hadoop.hdds.conf.OzoneConfiguration;
 import org.apache.hadoop.hdds.scm.ScmConfigKeys;
 import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.BeforeAll;
 
-import java.io.IOException;
-
 /**
  * Tests the AWS S3 SDK V2 basic operations with OM Ratis enabled.
  */
-public class TestBucketVerificationConditionUsingS3SDKV2 extends AbstractS3BucketVerificationConditionUsingS3SDKV2Tests {
+public class TestBucketVerificationConditionUsingS3SDKV2
+    extends AbstractS3BucketVerificationConditionUsingS3SDKV2Tests {
 
   @BeforeAll
   public static void init() throws Exception {

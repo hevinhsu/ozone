@@ -17,9 +17,10 @@
 
 package org.apache.hadoop.ozone.s3.endpoint;
 
-import static java.net.HttpURLConnection.HTTP_OK;
 import static org.apache.hadoop.ozone.s3.exception.S3ErrorTable.ACCESS_DENIED;
-import static org.junit.jupiter.api.Assertions.*;
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.junit.jupiter.api.Assertions.fail;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 
@@ -74,7 +75,7 @@ public class TestBucketDelete {
   @Test
   public void testDeleteWithNoSuchBucket() throws Exception {
     try {
-      bucketEndpoint.delete("unknownbucket" ,httpHeaders);
+      bucketEndpoint.delete("unknownbucket", httpHeaders);
     } catch (OS3Exception ex) {
       assertEquals(S3ErrorTable.NO_SUCH_BUCKET.getCode(), ex.getCode());
       assertEquals(S3ErrorTable.NO_SUCH_BUCKET.getErrorMessage(),

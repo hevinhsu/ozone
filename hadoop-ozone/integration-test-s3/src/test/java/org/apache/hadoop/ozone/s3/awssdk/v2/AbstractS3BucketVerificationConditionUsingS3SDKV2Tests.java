@@ -17,7 +17,9 @@
 
 package org.apache.hadoop.ozone.s3.awssdk.v2;
 
-import static org.junit.jupiter.api.Assertions.*;
+import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 import static software.amazon.awssdk.core.sync.RequestBody.fromString;
 
 import com.google.common.collect.ImmutableList;
@@ -114,20 +116,20 @@ public abstract class AbstractS3BucketVerificationConditionUsingS3SDKV2Tests ext
     }
   }
 
-  private static final String defaultBucketName = "test-bucket-verification-condition-bucket";
-  private static final String wrongOwner = "wrong-owner";
+  private static final String DEFAULT_BUCKET_NAME = "test-bucket-verification-condition-bucket";
+  private static final String WRONG_OWNER = "wrong-owner";
   private static String correctOwner;
-  private static final String testKey = "test-key";
-  private static final String testContent = "hello-ozone";
+  private static final String TEST_KEY = "test-key";
+  private static final String TEST_CONTENT = "hello-ozone";
 
   static void createDefaultResource() {
     // bucket
-    s3Client.createBucket(b -> b.bucket(defaultBucketName));
-    GetBucketAclRequest normalRequest = GetBucketAclRequest.builder().bucket(defaultBucketName).build();
+    s3Client.createBucket(b -> b.bucket(DEFAULT_BUCKET_NAME));
+    GetBucketAclRequest normalRequest = GetBucketAclRequest.builder().bucket(DEFAULT_BUCKET_NAME).build();
     correctOwner = s3Client.getBucketAcl(normalRequest).owner().displayName();
 
     // object
-    s3Client.putObject(b -> b.bucket(defaultBucketName).key(testKey), fromString(testContent));
+    s3Client.putObject(b -> b.bucket(DEFAULT_BUCKET_NAME).key(TEST_KEY), fromString(TEST_CONTENT));
   }
 
   @Nested
@@ -136,14 +138,14 @@ public abstract class AbstractS3BucketVerificationConditionUsingS3SDKV2Tests ext
     @Test
     public void testGetBucketAcl() {
       GetBucketAclRequest correctRequest = GetBucketAclRequest.builder()
-          .bucket(defaultBucketName)
+          .bucket(DEFAULT_BUCKET_NAME)
           .expectedBucketOwner(correctOwner)
           .build();
       verifyPassBucketOwnershipVerification(() -> s3Client.getBucketAcl(correctRequest));
 
       GetBucketAclRequest wrongRequest = GetBucketAclRequest.builder()
-          .bucket(defaultBucketName)
-          .expectedBucketOwner(wrongOwner)
+          .bucket(DEFAULT_BUCKET_NAME)
+          .expectedBucketOwner(WRONG_OWNER)
           .build();
       verifyBucketOwnershipVerificationAccessDenied(() -> s3Client.getBucketAcl(wrongRequest));
     }
@@ -151,14 +153,14 @@ public abstract class AbstractS3BucketVerificationConditionUsingS3SDKV2Tests ext
     @Test
     public void testListObject() {
       ListObjectsRequest correctRequest = ListObjectsRequest.builder()
-          .bucket(defaultBucketName)
+          .bucket(DEFAULT_BUCKET_NAME)
           .expectedBucketOwner(correctOwner)
           .build();
       verifyPassBucketOwnershipVerification(() -> s3Client.listObjects(correctRequest));
 
       ListObjectsRequest wrongRequest = ListObjectsRequest.builder()
-          .bucket(defaultBucketName)
-          .expectedBucketOwner(wrongOwner)
+          .bucket(DEFAULT_BUCKET_NAME)
+          .expectedBucketOwner(WRONG_OWNER)
           .build();
       verifyBucketOwnershipVerificationAccessDenied(() -> s3Client.listObjects(wrongRequest));
     }
@@ -166,14 +168,14 @@ public abstract class AbstractS3BucketVerificationConditionUsingS3SDKV2Tests ext
     @Test
     public void testListMultipartUploads() {
       ListMultipartUploadsRequest correctRequest = ListMultipartUploadsRequest.builder()
-          .bucket(defaultBucketName)
+          .bucket(DEFAULT_BUCKET_NAME)
           .expectedBucketOwner(correctOwner)
           .build();
       verifyPassBucketOwnershipVerification(() -> s3Client.listMultipartUploads(correctRequest));
 
       ListMultipartUploadsRequest wrongRequest = ListMultipartUploadsRequest.builder()
-          .bucket(defaultBucketName)
-          .expectedBucketOwner(wrongOwner)
+          .bucket(DEFAULT_BUCKET_NAME)
+          .expectedBucketOwner(WRONG_OWNER)
           .build();
       verifyBucketOwnershipVerificationAccessDenied(
           () -> s3Client.listMultipartUploads(wrongRequest));
@@ -182,16 +184,16 @@ public abstract class AbstractS3BucketVerificationConditionUsingS3SDKV2Tests ext
     @Test
     public void testPutAcl() {
       PutBucketAclRequest correctRequest = PutBucketAclRequest.builder()
-          .bucket(defaultBucketName)
+          .bucket(DEFAULT_BUCKET_NAME)
           .grantRead("")
           .expectedBucketOwner(correctOwner)
           .build();
       verifyPassBucketOwnershipVerification(() -> s3Client.putBucketAcl(correctRequest));
 
       PutBucketAclRequest wrongRequest = PutBucketAclRequest.builder()
-          .bucket(defaultBucketName)
+          .bucket(DEFAULT_BUCKET_NAME)
           .grantRead("")
-          .expectedBucketOwner(wrongOwner)
+          .expectedBucketOwner(WRONG_OWNER)
           .build();
       verifyBucketOwnershipVerificationAccessDenied(() -> s3Client.putBucketAcl(wrongRequest));
     }
@@ -199,14 +201,14 @@ public abstract class AbstractS3BucketVerificationConditionUsingS3SDKV2Tests ext
     @Test
     public void testHeadBucket() {
       HeadBucketRequest correctRequest = HeadBucketRequest.builder()
-          .bucket(defaultBucketName)
+          .bucket(DEFAULT_BUCKET_NAME)
           .expectedBucketOwner(correctOwner)
           .build();
       verifyPassBucketOwnershipVerification(() -> s3Client.headBucket(correctRequest));
 
       HeadBucketRequest wrongRequest = HeadBucketRequest.builder()
-          .bucket(defaultBucketName)
-          .expectedBucketOwner(wrongOwner)
+          .bucket(DEFAULT_BUCKET_NAME)
+          .expectedBucketOwner(WRONG_OWNER)
           .build();
       S3Exception exception = assertThrows(S3Exception.class, () -> s3Client.headBucket(wrongRequest));
       assertEquals(403, exception.statusCode());
@@ -215,17 +217,17 @@ public abstract class AbstractS3BucketVerificationConditionUsingS3SDKV2Tests ext
     @Test
     public void testDeleteBucket() {
       s3Client.createBucket(builder -> builder.bucket("for-delete"));
-      String correctOwner = s3Client.getBucketAcl(builder -> builder.bucket("for-delete")).owner().displayName();
+      String newCorrectOwner = s3Client.getBucketAcl(builder -> builder.bucket("for-delete")).owner().displayName();
 
       DeleteBucketRequest wrongRequest = DeleteBucketRequest.builder()
           .bucket("for-delete")
-          .expectedBucketOwner(wrongOwner)
+          .expectedBucketOwner(WRONG_OWNER)
           .build();
       verifyBucketOwnershipVerificationAccessDenied(() -> s3Client.deleteBucket(wrongRequest));
 
       DeleteBucketRequest correctRequest = DeleteBucketRequest.builder()
           .bucket("for-delete")
-          .expectedBucketOwner(correctOwner)
+          .expectedBucketOwner(newCorrectOwner)
           .build();
       verifyPassBucketOwnershipVerification(() -> s3Client.deleteBucket(correctRequest));
     }
@@ -233,7 +235,7 @@ public abstract class AbstractS3BucketVerificationConditionUsingS3SDKV2Tests ext
     @Test
     public void testMultiDelete() {
       DeleteObjectsRequest correctRequest = DeleteObjectsRequest.builder()
-          .bucket(defaultBucketName)
+          .bucket(DEFAULT_BUCKET_NAME)
           .expectedBucketOwner(correctOwner)
           .delete(Delete.builder().objects(ObjectIdentifier.builder().key("test").build()).build())
           .build();
@@ -241,8 +243,8 @@ public abstract class AbstractS3BucketVerificationConditionUsingS3SDKV2Tests ext
       verifyPassBucketOwnershipVerification(() -> s3Client.deleteObjects(correctRequest));
 
       DeleteObjectsRequest wrongRequest = DeleteObjectsRequest.builder()
-          .bucket(defaultBucketName)
-          .expectedBucketOwner(wrongOwner)
+          .bucket(DEFAULT_BUCKET_NAME)
+          .expectedBucketOwner(WRONG_OWNER)
           .delete(Delete.builder().objects(ObjectIdentifier.builder().key("test").build()).build())
           .build();
       verifyBucketOwnershipVerificationAccessDenied(() -> s3Client.deleteObjects(wrongRequest));
@@ -257,18 +259,18 @@ public abstract class AbstractS3BucketVerificationConditionUsingS3SDKV2Tests ext
       String newKey = "create-key";
 
       PutObjectRequest wrongRequest = PutObjectRequest.builder()
-          .bucket(defaultBucketName)
+          .bucket(DEFAULT_BUCKET_NAME)
           .key(newKey)
-          .expectedBucketOwner(wrongOwner)
+          .expectedBucketOwner(WRONG_OWNER)
           .build();
-      verifyBucketOwnershipVerificationAccessDenied(() -> s3Client.putObject(wrongRequest, fromString(testContent)));
+      verifyBucketOwnershipVerificationAccessDenied(() -> s3Client.putObject(wrongRequest, fromString(TEST_CONTENT)));
 
       PutObjectRequest correctRequest = PutObjectRequest.builder()
-          .bucket(defaultBucketName)
+          .bucket(DEFAULT_BUCKET_NAME)
           .key(newKey)
           .expectedBucketOwner(correctOwner)
           .build();
-      verifyPassBucketOwnershipVerification(() -> s3Client.putObject(correctRequest, fromString(testContent)));
+      verifyPassBucketOwnershipVerification(() -> s3Client.putObject(correctRequest, fromString(TEST_CONTENT)));
     }
 
     @Test
@@ -278,17 +280,17 @@ public abstract class AbstractS3BucketVerificationConditionUsingS3SDKV2Tests ext
           Tag.builder().key("project").value("example").build()
       );
       PutObjectTaggingRequest wrongRequest = PutObjectTaggingRequest.builder()
-          .bucket(defaultBucketName)
-          .key(testKey)
+          .bucket(DEFAULT_BUCKET_NAME)
+          .key(TEST_KEY)
           .tagging(Tagging.builder().tagSet(tags).build())
-          .expectedBucketOwner(wrongOwner)
+          .expectedBucketOwner(WRONG_OWNER)
           .build();
 
       verifyBucketOwnershipVerificationAccessDenied(() -> s3Client.putObjectTagging(wrongRequest));
 
       PutObjectTaggingRequest correctRequest = PutObjectTaggingRequest.builder()
-          .bucket(defaultBucketName)
-          .key(testKey)
+          .bucket(DEFAULT_BUCKET_NAME)
+          .key(TEST_KEY)
           .tagging(Tagging.builder().tagSet(tags).build())
           .expectedBucketOwner(correctOwner)
           .build();
@@ -298,15 +300,15 @@ public abstract class AbstractS3BucketVerificationConditionUsingS3SDKV2Tests ext
     @Test
     public void testCreateMultipartKey() {
       CreateMultipartUploadRequest wrongRequest = CreateMultipartUploadRequest.builder()
-          .bucket(defaultBucketName)
-          .key(testKey)
-          .expectedBucketOwner(wrongOwner)
+          .bucket(DEFAULT_BUCKET_NAME)
+          .key(TEST_KEY)
+          .expectedBucketOwner(WRONG_OWNER)
           .build();
       verifyBucketOwnershipVerificationAccessDenied(() -> s3Client.createMultipartUpload(wrongRequest));
 
       CreateMultipartUploadRequest correctRequest = CreateMultipartUploadRequest.builder()
-          .bucket(defaultBucketName)
-          .key(testKey)
+          .bucket(DEFAULT_BUCKET_NAME)
+          .key(TEST_KEY)
           .expectedBucketOwner(correctOwner)
           .build();
       verifyPassBucketOwnershipVerification(() -> s3Client.createMultipartUpload(correctRequest));
@@ -317,30 +319,30 @@ public abstract class AbstractS3BucketVerificationConditionUsingS3SDKV2Tests ext
       String sourceKey = "test-multipart-by-copy-source-key";
       String destKey = "test-multipart-by-copy-dest-key";
 
-      s3Client.putObject(b -> b.bucket(defaultBucketName).key(sourceKey), fromString(testContent));
+      s3Client.putObject(b -> b.bucket(DEFAULT_BUCKET_NAME).key(sourceKey), fromString(TEST_CONTENT));
 
       CreateMultipartUploadResponse initResponse =
-          s3Client.createMultipartUpload(b -> b.bucket(defaultBucketName).key(destKey));
+          s3Client.createMultipartUpload(b -> b.bucket(DEFAULT_BUCKET_NAME).key(destKey));
 
       String uploadId = initResponse.uploadId();
 
       UploadPartCopyRequest wrongRequest = UploadPartCopyRequest.builder()
-          .sourceBucket(defaultBucketName)
+          .sourceBucket(DEFAULT_BUCKET_NAME)
           .sourceKey(sourceKey)
-          .expectedSourceBucketOwner(wrongOwner)
-          .destinationBucket(defaultBucketName)
+          .expectedSourceBucketOwner(WRONG_OWNER)
+          .destinationBucket(DEFAULT_BUCKET_NAME)
           .destinationKey(destKey)
           .uploadId(uploadId)
           .partNumber(1)
-          .expectedBucketOwner(wrongOwner)
+          .expectedBucketOwner(WRONG_OWNER)
           .build();
       verifyBucketOwnershipVerificationAccessDenied(() -> s3Client.uploadPartCopy(wrongRequest));
 
       UploadPartCopyRequest correctRequest = UploadPartCopyRequest.builder()
-          .sourceBucket(defaultBucketName)
+          .sourceBucket(DEFAULT_BUCKET_NAME)
           .sourceKey(sourceKey)
           .expectedSourceBucketOwner(correctOwner)
-          .destinationBucket(defaultBucketName)
+          .destinationBucket(DEFAULT_BUCKET_NAME)
           .destinationKey(destKey)
           .uploadId(uploadId)
           .expectedBucketOwner(correctOwner)
@@ -353,22 +355,22 @@ public abstract class AbstractS3BucketVerificationConditionUsingS3SDKV2Tests ext
     public void testCopyObject() {
       String sourceKey = "test-copy-object-source-key";
       String destKey = "test-copy-object-dest-key";
-      s3Client.putObject(b -> b.bucket(defaultBucketName).key(sourceKey), fromString("test"));
+      s3Client.putObject(b -> b.bucket(DEFAULT_BUCKET_NAME).key(sourceKey), fromString("test"));
 
       CopyObjectRequest wrongRequest = CopyObjectRequest.builder()
-          .sourceBucket(defaultBucketName)
+          .sourceBucket(DEFAULT_BUCKET_NAME)
           .sourceKey(sourceKey)
-          .destinationBucket(defaultBucketName)
+          .destinationBucket(DEFAULT_BUCKET_NAME)
           .destinationKey(destKey)
-          .expectedSourceBucketOwner(wrongOwner)
-          .expectedBucketOwner(wrongOwner)
+          .expectedSourceBucketOwner(WRONG_OWNER)
+          .expectedBucketOwner(WRONG_OWNER)
           .build();
       verifyBucketOwnershipVerificationAccessDenied(() -> s3Client.copyObject(wrongRequest));
 
       CopyObjectRequest correctRequest = CopyObjectRequest.builder()
-          .sourceBucket(defaultBucketName)
+          .sourceBucket(DEFAULT_BUCKET_NAME)
           .sourceKey(sourceKey)
-          .destinationBucket(defaultBucketName)
+          .destinationBucket(DEFAULT_BUCKET_NAME)
           .destinationKey(destKey)
           .expectedSourceBucketOwner(correctOwner)
           .expectedBucketOwner(correctOwner)
@@ -381,14 +383,14 @@ public abstract class AbstractS3BucketVerificationConditionUsingS3SDKV2Tests ext
       String newKey = "create-directory-key/";
 
       PutObjectRequest wrongRequest = PutObjectRequest.builder()
-          .bucket(defaultBucketName)
+          .bucket(DEFAULT_BUCKET_NAME)
           .key(newKey)
-          .expectedBucketOwner(wrongOwner)
+          .expectedBucketOwner(WRONG_OWNER)
           .build();
       verifyBucketOwnershipVerificationAccessDenied(() -> s3Client.putObject(wrongRequest, RequestBody.empty()));
 
       PutObjectRequest correctRequest = PutObjectRequest.builder()
-          .bucket(defaultBucketName)
+          .bucket(DEFAULT_BUCKET_NAME)
           .key(newKey)
           .expectedBucketOwner(correctOwner)
           .build();
@@ -398,16 +400,16 @@ public abstract class AbstractS3BucketVerificationConditionUsingS3SDKV2Tests ext
     @Test
     public void testGetKey() {
       GetObjectRequest correctRequest = GetObjectRequest.builder()
-          .bucket(defaultBucketName)
-          .key(testKey)
+          .bucket(DEFAULT_BUCKET_NAME)
+          .key(TEST_KEY)
           .expectedBucketOwner(correctOwner)
           .build();
       verifyPassBucketOwnershipVerification(() -> s3Client.getObject(correctRequest));
 
       GetObjectRequest wrongRequest = GetObjectRequest.builder()
-          .bucket(defaultBucketName)
-          .key(testKey)
-          .expectedBucketOwner(wrongOwner)
+          .bucket(DEFAULT_BUCKET_NAME)
+          .key(TEST_KEY)
+          .expectedBucketOwner(WRONG_OWNER)
           .build();
       verifyBucketOwnershipVerificationAccessDenied(() -> s3Client.getObject(wrongRequest));
     }
@@ -415,16 +417,16 @@ public abstract class AbstractS3BucketVerificationConditionUsingS3SDKV2Tests ext
     @Test
     public void testGetObjectTagging() {
       GetObjectTaggingRequest correctRequest = GetObjectTaggingRequest.builder()
-          .bucket(defaultBucketName)
-          .key(testKey)
+          .bucket(DEFAULT_BUCKET_NAME)
+          .key(TEST_KEY)
           .expectedBucketOwner(correctOwner)
           .build();
       verifyPassBucketOwnershipVerification(() -> s3Client.getObjectTagging(correctRequest));
 
       GetObjectTaggingRequest wrongRequest = GetObjectTaggingRequest.builder()
-          .bucket(defaultBucketName)
-          .key(testKey)
-          .expectedBucketOwner(wrongOwner)
+          .bucket(DEFAULT_BUCKET_NAME)
+          .key(TEST_KEY)
+          .expectedBucketOwner(WRONG_OWNER)
           .build();
       verifyBucketOwnershipVerificationAccessDenied(() -> s3Client.getObjectTagging(wrongRequest));
     }
@@ -433,7 +435,7 @@ public abstract class AbstractS3BucketVerificationConditionUsingS3SDKV2Tests ext
     public void testListParts() {
       String newKey = "list-parts-key";
       CreateMultipartUploadResponse multipartUploadResponse = s3Client.createMultipartUpload(b -> {
-        b.bucket(defaultBucketName)
+        b.bucket(DEFAULT_BUCKET_NAME)
             .key(newKey)
             .build();
       });
@@ -442,15 +444,15 @@ public abstract class AbstractS3BucketVerificationConditionUsingS3SDKV2Tests ext
 
       UploadPartResponse uploadPartResponse = s3Client.uploadPart(
           UploadPartRequest.builder()
-              .bucket(defaultBucketName)
+              .bucket(DEFAULT_BUCKET_NAME)
               .key(newKey)
               .uploadId(uploadId)
               .partNumber(1)
-              .contentLength((long) testContent.getBytes(StandardCharsets.UTF_8).length)
-              .build(), fromString(testContent));
+              .contentLength((long) TEST_CONTENT.getBytes(StandardCharsets.UTF_8).length)
+              .build(), fromString(TEST_CONTENT));
 
       ListPartsRequest correctRequest = ListPartsRequest.builder()
-          .bucket(defaultBucketName)
+          .bucket(DEFAULT_BUCKET_NAME)
           .key(newKey)
           .uploadId(uploadId)
           .expectedBucketOwner(correctOwner)
@@ -458,10 +460,10 @@ public abstract class AbstractS3BucketVerificationConditionUsingS3SDKV2Tests ext
       verifyPassBucketOwnershipVerification(() -> s3Client.listParts(correctRequest));
 
       ListPartsRequest wrongResponse = ListPartsRequest.builder()
-          .bucket(defaultBucketName)
+          .bucket(DEFAULT_BUCKET_NAME)
           .key(newKey)
           .uploadId(uploadId)
-          .expectedBucketOwner(wrongOwner)
+          .expectedBucketOwner(WRONG_OWNER)
           .build();
       verifyBucketOwnershipVerificationAccessDenied(() -> s3Client.listParts(wrongResponse));
     }
@@ -469,16 +471,16 @@ public abstract class AbstractS3BucketVerificationConditionUsingS3SDKV2Tests ext
     @Test
     public void testHeadKey() {
       HeadObjectRequest correctRequest = HeadObjectRequest.builder()
-          .bucket(defaultBucketName)
-          .key(testKey)
+          .bucket(DEFAULT_BUCKET_NAME)
+          .key(TEST_KEY)
           .expectedBucketOwner(correctOwner)
           .build();
       verifyPassBucketOwnershipVerification(() -> s3Client.headObject(correctRequest));
 
       HeadObjectRequest wrongRequest = HeadObjectRequest.builder()
-          .bucket(defaultBucketName)
-          .key(testKey)
-          .expectedBucketOwner(wrongOwner)
+          .bucket(DEFAULT_BUCKET_NAME)
+          .key(TEST_KEY)
+          .expectedBucketOwner(WRONG_OWNER)
           .build();
       S3Exception exception = assertThrows(S3Exception.class, () -> s3Client.headObject(wrongRequest));
       assertEquals(403, exception.statusCode());
@@ -487,17 +489,17 @@ public abstract class AbstractS3BucketVerificationConditionUsingS3SDKV2Tests ext
     @Test
     public void testDeleteKey() {
       String newKey = "delete-key";
-      s3Client.putObject(b -> b.bucket(defaultBucketName).key(newKey), fromString(testContent));
+      s3Client.putObject(b -> b.bucket(DEFAULT_BUCKET_NAME).key(newKey), fromString(TEST_CONTENT));
 
       DeleteObjectsRequest wrongRequest = DeleteObjectsRequest.builder()
-          .bucket(defaultBucketName)
-          .expectedBucketOwner(wrongOwner)
+          .bucket(DEFAULT_BUCKET_NAME)
+          .expectedBucketOwner(WRONG_OWNER)
           .delete(Delete.builder().objects(ObjectIdentifier.builder().key(newKey).build()).build())
           .build();
       verifyBucketOwnershipVerificationAccessDenied(() -> s3Client.deleteObjects(wrongRequest));
 
       DeleteObjectsRequest correctRequest = DeleteObjectsRequest.builder()
-          .bucket(defaultBucketName)
+          .bucket(DEFAULT_BUCKET_NAME)
           .expectedBucketOwner(correctOwner)
           .delete(Delete.builder().objects(ObjectIdentifier.builder().key(newKey).build()).build())
           .build();
@@ -507,16 +509,16 @@ public abstract class AbstractS3BucketVerificationConditionUsingS3SDKV2Tests ext
     @Test
     public void testDeleteObjectTagging() {
       DeleteObjectTaggingRequest correctRequest = DeleteObjectTaggingRequest.builder()
-          .bucket(defaultBucketName)
-          .key(testKey)
+          .bucket(DEFAULT_BUCKET_NAME)
+          .key(TEST_KEY)
           .expectedBucketOwner(correctOwner)
           .build();
       verifyPassBucketOwnershipVerification(() -> s3Client.deleteObjectTagging(correctRequest));
 
       DeleteObjectTaggingRequest wrongRequest = DeleteObjectTaggingRequest.builder()
-          .bucket(defaultBucketName)
-          .key(testKey)
-          .expectedBucketOwner(wrongOwner)
+          .bucket(DEFAULT_BUCKET_NAME)
+          .key(TEST_KEY)
+          .expectedBucketOwner(WRONG_OWNER)
           .build();
       verifyBucketOwnershipVerificationAccessDenied(() -> s3Client.deleteObjectTagging(wrongRequest));
     }
@@ -524,21 +526,21 @@ public abstract class AbstractS3BucketVerificationConditionUsingS3SDKV2Tests ext
     @Test
     public void testAbortMultipartUpload() {
       CreateMultipartUploadResponse multipartUploadResponse =
-          s3Client.createMultipartUpload(b -> b.bucket(defaultBucketName).key(testKey));
+          s3Client.createMultipartUpload(b -> b.bucket(DEFAULT_BUCKET_NAME).key(TEST_KEY));
 
       String uploadId = multipartUploadResponse.uploadId();
 
       AbortMultipartUploadRequest wrongRequest = AbortMultipartUploadRequest.builder()
-          .bucket(defaultBucketName)
-          .key(testKey)
+          .bucket(DEFAULT_BUCKET_NAME)
+          .key(TEST_KEY)
           .uploadId(uploadId)
-          .expectedBucketOwner(wrongOwner)
+          .expectedBucketOwner(WRONG_OWNER)
           .build();
       verifyBucketOwnershipVerificationAccessDenied(() -> s3Client.abortMultipartUpload(wrongRequest));
 
       AbortMultipartUploadRequest correctRequest = AbortMultipartUploadRequest.builder()
-          .bucket(defaultBucketName)
-          .key(testKey)
+          .bucket(DEFAULT_BUCKET_NAME)
+          .key(TEST_KEY)
           .uploadId(uploadId)
           .expectedBucketOwner(correctOwner)
           .build();
@@ -550,14 +552,14 @@ public abstract class AbstractS3BucketVerificationConditionUsingS3SDKV2Tests ext
       String newKey = "init-multipart-upload-key";
 
       CreateMultipartUploadRequest wrongRequest = CreateMultipartUploadRequest.builder()
-          .bucket(defaultBucketName)
+          .bucket(DEFAULT_BUCKET_NAME)
           .key(newKey)
-          .expectedBucketOwner(wrongOwner)
+          .expectedBucketOwner(WRONG_OWNER)
           .build();
       verifyBucketOwnershipVerificationAccessDenied(() -> s3Client.createMultipartUpload(wrongRequest));
 
       CreateMultipartUploadRequest correctRequest = CreateMultipartUploadRequest.builder()
-          .bucket(defaultBucketName)
+          .bucket(DEFAULT_BUCKET_NAME)
           .key(newKey)
           .expectedBucketOwner(correctOwner)
           .build();
@@ -568,16 +570,16 @@ public abstract class AbstractS3BucketVerificationConditionUsingS3SDKV2Tests ext
     public void testCompleteMultipartUpload() {
       String newKey = "complete-multipart-upload-key";
       CreateMultipartUploadResponse multipartUploadResponse =
-          s3Client.createMultipartUpload(b -> b.bucket(defaultBucketName).key(newKey));
+          s3Client.createMultipartUpload(b -> b.bucket(DEFAULT_BUCKET_NAME).key(newKey));
 
       String uploadId = multipartUploadResponse.uploadId();
 
-      UploadPartResponse uploadPartResponse = s3Client.uploadPart(b -> b.bucket(defaultBucketName)
+      UploadPartResponse uploadPartResponse = s3Client.uploadPart(b -> b.bucket(DEFAULT_BUCKET_NAME)
           .key(newKey)
           .uploadId(uploadId)
           .partNumber(1)
-          .contentLength((long) testContent.getBytes(StandardCharsets.UTF_8).length)
-          .build(), fromString(testContent));
+          .contentLength((long) TEST_CONTENT.getBytes(StandardCharsets.UTF_8).length)
+          .build(), fromString(TEST_CONTENT));
 
       CompletedMultipartUpload completedUpload = CompletedMultipartUpload.builder()
           .parts(
@@ -585,18 +587,17 @@ public abstract class AbstractS3BucketVerificationConditionUsingS3SDKV2Tests ext
           ).build();
 
 
-
       CompleteMultipartUploadRequest wrongRequest = CompleteMultipartUploadRequest.builder()
-          .bucket(defaultBucketName)
+          .bucket(DEFAULT_BUCKET_NAME)
           .key(newKey)
           .uploadId(uploadId)
           .multipartUpload(completedUpload)
-          .expectedBucketOwner(wrongOwner)
+          .expectedBucketOwner(WRONG_OWNER)
           .build();
       verifyBucketOwnershipVerificationAccessDenied(() -> s3Client.completeMultipartUpload(wrongRequest));
 
       CompleteMultipartUploadRequest correctRequest = CompleteMultipartUploadRequest.builder()
-          .bucket(defaultBucketName)
+          .bucket(DEFAULT_BUCKET_NAME)
           .key(newKey)
           .uploadId(uploadId)
           .multipartUpload(completedUpload)

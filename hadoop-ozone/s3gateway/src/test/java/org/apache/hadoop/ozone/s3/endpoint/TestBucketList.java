@@ -30,6 +30,8 @@ import static org.mockito.Mockito.when;
 
 import java.io.IOException;
 import java.util.stream.IntStream;
+import javax.ws.rs.core.HttpHeaders;
+import javax.ws.rs.core.Response;
 import org.apache.hadoop.hdds.conf.OzoneConfiguration;
 import org.apache.hadoop.ozone.client.OzoneBucket;
 import org.apache.hadoop.ozone.client.OzoneClient;
@@ -41,8 +43,6 @@ import org.apache.hadoop.ozone.s3.exception.S3ErrorTable;
 import org.apache.hadoop.security.UserGroupInformation;
 import org.junit.jupiter.api.Test;
 import org.mockito.Mockito;
-import javax.ws.rs.core.HttpHeaders;
-import javax.ws.rs.core.Response;
 
 /**
  * Testing basic object list browsing.
