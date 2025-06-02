@@ -18,15 +18,14 @@
 package org.apache.hadoop.ozone.s3.endpoint;
 
 import static java.nio.charset.StandardCharsets.UTF_8;
+import static org.apache.hadoop.ozone.s3.exception.S3ErrorTable.ACCESS_DENIED;
 import static org.apache.hadoop.ozone.s3.util.S3Consts.COPY_SOURCE_HEADER;
 import static org.apache.hadoop.ozone.s3.util.S3Consts.COPY_SOURCE_HEADER_RANGE;
 import static org.apache.hadoop.ozone.s3.util.S3Consts.COPY_SOURCE_IF_MODIFIED_SINCE;
 import static org.apache.hadoop.ozone.s3.util.S3Consts.COPY_SOURCE_IF_UNMODIFIED_SINCE;
 import static org.apache.hadoop.ozone.s3.util.S3Consts.STORAGE_CLASS_HEADER;
 import static org.apache.hadoop.ozone.s3.util.S3Consts.X_AMZ_CONTENT_SHA256;
-import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.junit.jupiter.api.Assertions.assertNotNull;
-import static org.junit.jupiter.api.Assertions.fail;
+import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 
@@ -309,6 +308,103 @@ public class TestMultipartUploadWithCopy {
         }
       }
     }
+  }
+
+  @Test
+  public void testPassBucketOwnerCondition() throws Exception {
+
+    // Initiate multipart upload
+    String uploadID = initiateMultipartUpload(KEY);
+
+    List<Part> partsList = new ArrayList<>();
+
+    // Upload parts
+    String content = "Multipart Upload 1";
+
+    Part part1 = uploadPart(KEY, uploadID, 1, content);
+    partsList.add(part1);
+
+    Part part2 =
+        uploadPartWithCopy(KEY, uploadID, 2,
+            OzoneConsts.S3_BUCKET + "/" + EXISTING_KEY, null);
+    partsList.add(part2);
+
+    Part part3 =
+        uploadPartWithCopy(KEY, uploadID, 3,
+            OzoneConsts.S3_BUCKET + "/" + EXISTING_KEY, "bytes=0-3");
+    partsList.add(part3);
+
+    Part part4 =
+        uploadPartWithCopy(KEY, uploadID, 3,
+            OzoneConsts.S3_BUCKET + "/" + EXISTING_KEY, "bytes=0-3",
+            beforeSourceKeyModificationTimeStr,
+            afterSourceKeyModificationTimeStr
+        );
+    partsList.add(part4);
+
+    // complete multipart upload
+    CompleteMultipartUploadRequest completeMultipartUploadRequest = new
+        CompleteMultipartUploadRequest();
+    completeMultipartUploadRequest.setPartList(partsList);
+
+    HttpHeaders headers = mock(HttpHeaders.class);
+    when(headers.getHeaderString(BucketOwnerCondition.EXPECTED_BUCKET_OWNER))
+        .thenReturn("defaultOwner");
+    REST.setHeaders(headers);
+
+    Response response = REST.completeMultipartUpload(OzoneConsts.S3_BUCKET, KEY,
+        uploadID, completeMultipartUploadRequest);
+
+    assertEquals(200, response.getStatus());
+  }
+
+  @Test
+  public void testFailedBucketOwnerCondition() throws Exception {
+
+    // Initiate multipart upload
+    String uploadID = initiateMultipartUpload(KEY);
+
+    List<Part> partsList = new ArrayList<>();
+
+    // Upload parts
+    String content = "Multipart Upload 1";
+
+    Part part1 = uploadPart(KEY, uploadID, 1, content);
+    partsList.add(part1);
+
+    Part part2 =
+        uploadPartWithCopy(KEY, uploadID, 2,
+            OzoneConsts.S3_BUCKET + "/" + EXISTING_KEY, null);
+    partsList.add(part2);
+
+    Part part3 =
+        uploadPartWithCopy(KEY, uploadID, 3,
+            OzoneConsts.S3_BUCKET + "/" + EXISTING_KEY, "bytes=0-3");
+    partsList.add(part3);
+
+    Part part4 =
+        uploadPartWithCopy(KEY, uploadID, 3,
+            OzoneConsts.S3_BUCKET + "/" + EXISTING_KEY, "bytes=0-3",
+            beforeSourceKeyModificationTimeStr,
+            afterSourceKeyModificationTimeStr
+        );
+    partsList.add(part4);
+
+    // complete multipart upload
+    CompleteMultipartUploadRequest completeMultipartUploadRequest = new
+        CompleteMultipartUploadRequest();
+    completeMultipartUploadRequest.setPartList(partsList);
+
+    HttpHeaders headers = mock(HttpHeaders.class);
+    when(headers.getHeaderString(BucketOwnerCondition.EXPECTED_BUCKET_OWNER))
+        .thenReturn("wrongOwner");
+    REST.setHeaders(headers);
+
+    OS3Exception exception =
+        assertThrows(OS3Exception.class, () -> REST.completeMultipartUpload(OzoneConsts.S3_BUCKET, KEY,
+            uploadID, completeMultipartUploadRequest));
+
+    assertEquals(ACCESS_DENIED.getMessage(), exception.getMessage());
   }
 
   private String initiateMultipartUpload(String key) throws IOException,

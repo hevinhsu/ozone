@@ -18,6 +18,7 @@
 package org.apache.hadoop.ozone.s3.endpoint;
 
 import static org.apache.hadoop.ozone.s3.S3GatewayConfigKeys.OZONE_S3G_LIST_MAX_KEYS_LIMIT;
+import static org.apache.hadoop.ozone.s3.exception.S3ErrorTable.ACCESS_DENIED;
 import static org.apache.hadoop.ozone.s3.util.S3Consts.ENCODING_TYPE;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
@@ -25,6 +26,7 @@ import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.mockito.Mockito.when;
 
 import java.io.IOException;
 import java.util.stream.IntStream;
@@ -38,6 +40,9 @@ import org.apache.hadoop.ozone.s3.exception.OS3Exception;
 import org.apache.hadoop.ozone.s3.exception.S3ErrorTable;
 import org.apache.hadoop.security.UserGroupInformation;
 import org.junit.jupiter.api.Test;
+import org.mockito.Mockito;
+import javax.ws.rs.core.HttpHeaders;
+import javax.ws.rs.core.Response;
 
 /**
  * Testing basic object list browsing.
@@ -575,6 +580,43 @@ public class TestBucketList {
 
     // Assert: The number of returned keys should be capped at the configured limit
     assertEquals(Integer.parseInt(configuredMaxKeysLimit), response.getContents().size());
+  }
+
+  @Test
+  public void testPassBucketOwnerCondition() throws Exception {
+    HttpHeaders headers = Mockito.mock(HttpHeaders.class);
+    when(headers.getHeaderString(BucketOwnerCondition.EXPECTED_BUCKET_OWNER))
+        .thenReturn("defaultOwner");
+
+    OzoneClient client = createClientWithKeys("file1", "dir1/file2");
+
+    BucketEndpoint getBucket = EndpointBuilder.newBucketEndpointBuilder()
+        .setClient(client)
+        .build();
+
+    Response response =
+        getBucket.get("b1", "/", null, null, 100, "",
+                null, null, null, null, null, null, 0, headers);
+    assertEquals(200, response.getStatus());
+  }
+
+  @Test
+  public void testFailedBucketOwnerCondition() throws Exception {
+    HttpHeaders headers = Mockito.mock(HttpHeaders.class);
+    when(headers.getHeaderString(BucketOwnerCondition.EXPECTED_BUCKET_OWNER))
+        .thenReturn("wrongOwner");
+
+    OzoneClient client = createClientWithKeys("file1", "dir1/file2");
+
+    BucketEndpoint getBucket = EndpointBuilder.newBucketEndpointBuilder()
+        .setClient(client)
+        .build();
+
+    OS3Exception exception =
+        assertThrows(OS3Exception.class, () -> getBucket.get("b1", "/", null, null, 100, "",
+            null, null, null, null, null, null, 0, headers));
+
+    assertEquals(ACCESS_DENIED.getMessage(), exception.getMessage());
   }
 
   private void assertEncodingTypeObject(

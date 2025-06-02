@@ -22,13 +22,9 @@ import static java.net.HttpURLConnection.HTTP_NOT_FOUND;
 import static java.net.HttpURLConnection.HTTP_NOT_IMPLEMENTED;
 import static java.net.HttpURLConnection.HTTP_OK;
 import static java.nio.charset.StandardCharsets.UTF_8;
-import static org.apache.hadoop.ozone.s3.exception.S3ErrorTable.MALFORMED_XML;
-import static org.apache.hadoop.ozone.s3.exception.S3ErrorTable.NOT_IMPLEMENTED;
-import static org.apache.hadoop.ozone.s3.exception.S3ErrorTable.NO_SUCH_BUCKET;
-import static org.apache.hadoop.ozone.s3.exception.S3ErrorTable.NO_SUCH_KEY;
+import static org.apache.hadoop.ozone.s3.exception.S3ErrorTable.*;
 import static org.apache.hadoop.ozone.s3.util.S3Consts.X_AMZ_CONTENT_SHA256;
-import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.junit.jupiter.api.Assertions.fail;
+import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
@@ -40,6 +36,7 @@ import java.util.HashMap;
 import java.util.Map;
 import java.util.function.Supplier;
 import javax.ws.rs.core.HttpHeaders;
+import javax.ws.rs.core.Response;
 import org.apache.hadoop.hdds.conf.OzoneConfiguration;
 import org.apache.hadoop.ozone.client.ObjectStore;
 import org.apache.hadoop.ozone.client.OzoneBucket;
@@ -53,6 +50,7 @@ import org.apache.hadoop.ozone.s3.exception.OS3Exception;
 import org.apache.hadoop.ozone.s3.util.S3Consts;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.mockito.Mockito;
 
 /**
  * Tests for PutObjectTagging.
@@ -191,6 +189,30 @@ public class TestObjectTaggingPut {
       assertEquals(HTTP_NOT_IMPLEMENTED, ex.getHttpCode());
       assertEquals(NOT_IMPLEMENTED.getCode(), ex.getCode());
     }
+  }
+
+  @Test
+  public void testPassBucketOwnerCondition() throws Exception {
+    HttpHeaders headers = Mockito.mock(HttpHeaders.class);
+    when(headers.getHeaderString(BucketOwnerCondition.EXPECTED_BUCKET_OWNER))
+        .thenReturn("defaultOwner");
+    objectEndpoint.setHeaders(headers);
+    Response response = objectEndpoint.put(BUCKET_NAME, KEY_NAME, 0, 1, null,
+        "", null, twoTags());
+    assertEquals(200, response.getStatus());
+  }
+
+  @Test
+  public void testFailedBucketOwnerCondition() {
+    HttpHeaders headers = Mockito.mock(HttpHeaders.class);
+    when(headers.getHeaderString(BucketOwnerCondition.EXPECTED_BUCKET_OWNER))
+        .thenReturn("wrongOwner");
+    objectEndpoint.setHeaders(headers);
+    OS3Exception exception =
+        assertThrows(OS3Exception.class, () -> objectEndpoint.put(BUCKET_NAME, KEY_NAME, 0, 1, null,
+            "", null, twoTags()));
+
+    assertEquals(ACCESS_DENIED.getMessage(), exception.getMessage());
   }
 
   private InputStream emptyBody() {
