@@ -43,6 +43,7 @@ import org.apache.hadoop.ozone.client.OzoneClient;
 import org.apache.hadoop.ozone.client.OzoneClientStub;
 import org.apache.hadoop.ozone.s3.endpoint.S3Tagging.Tag;
 import org.apache.hadoop.ozone.s3.exception.OS3Exception;
+import org.apache.hadoop.ozone.s3.util.S3Consts;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.mockito.Mockito;
@@ -134,7 +135,7 @@ public class TestObjectTaggingGet {
   @Test
   public void testPassBucketOwnerCondition() throws Exception {
     HttpHeaders headers = Mockito.mock(HttpHeaders.class);
-    when(headers.getHeaderString(BucketOwnerCondition.EXPECTED_BUCKET_OWNER))
+    when(headers.getHeaderString(S3Consts.EXPECTED_BUCKET_OWNER_HEADER))
         .thenReturn("defaultOwner");
     rest.setHeaders(headers);
     Response response = rest.get(BUCKET_NAME, KEY_WITH_TAG,  0, null, 0, null, "");
@@ -144,7 +145,7 @@ public class TestObjectTaggingGet {
   @Test
   public void testFailedBucketOwnerCondition() {
     HttpHeaders headers = Mockito.mock(HttpHeaders.class);
-    when(headers.getHeaderString(BucketOwnerCondition.EXPECTED_BUCKET_OWNER))
+    when(headers.getHeaderString(S3Consts.EXPECTED_BUCKET_OWNER_HEADER))
         .thenReturn("wrongOwner");
     rest.setHeaders(headers);
     OS3Exception exception =

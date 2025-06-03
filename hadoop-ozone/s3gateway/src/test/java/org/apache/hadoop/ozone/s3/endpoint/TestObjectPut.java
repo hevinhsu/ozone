@@ -78,6 +78,7 @@ import org.apache.hadoop.ozone.client.io.OzoneInputStream;
 import org.apache.hadoop.ozone.om.helpers.BucketLayout;
 import org.apache.hadoop.ozone.s3.exception.OS3Exception;
 import org.apache.hadoop.ozone.s3.exception.S3ErrorTable;
+import org.apache.hadoop.ozone.s3.util.S3Consts;
 import org.apache.http.HttpStatus;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -181,7 +182,7 @@ class TestObjectPut {
 
   @Test
   public void testObjectPutWithPassBucketOwnerCondition() throws Exception {
-    when(headers.getHeaderString(BucketOwnerCondition.EXPECTED_BUCKET_OWNER))
+    when(headers.getHeaderString(S3Consts.EXPECTED_BUCKET_OWNER_HEADER))
         .thenReturn(DEFAULT_OWNER);
     ByteArrayInputStream body =
         new ByteArrayInputStream(CONTENT.getBytes(UTF_8));
@@ -194,7 +195,7 @@ class TestObjectPut {
 
   @Test
   public void testPutObjectWithFailedBucketOwnerCondition() {
-    when(headers.getHeaderString(BucketOwnerCondition.EXPECTED_BUCKET_OWNER))
+    when(headers.getHeaderString(S3Consts.EXPECTED_BUCKET_OWNER_HEADER))
         .thenReturn("wrongOwner");
     ByteArrayInputStream body =
         new ByteArrayInputStream(CONTENT.getBytes(UTF_8));
@@ -264,7 +265,7 @@ class TestObjectPut {
   public void testCopyObjectWithPassBucketOwnerCondition() throws Exception {
     when(headers.getHeaderString(X_AMZ_CONTENT_SHA256)).thenReturn("mockSignature");
     when(headers.getHeaderString(TAG_HEADER)).thenReturn("tag1=value1&tag2=value2");
-    when(headers.getHeaderString(BucketOwnerCondition.EXPECTED_BUCKET_OWNER))
+    when(headers.getHeaderString(S3Consts.EXPECTED_BUCKET_OWNER_HEADER))
         .thenReturn(DEFAULT_OWNER);
 
     ByteArrayInputStream body =
@@ -280,7 +281,7 @@ class TestObjectPut {
   public void testCopyObjectWithFailedBucketOwnerCondition() {
     when(headers.getHeaderString(X_AMZ_CONTENT_SHA256)).thenReturn("mockSignature");
     when(headers.getHeaderString(TAG_HEADER)).thenReturn("tag1=value1&tag2=value2");
-    when(headers.getHeaderString(BucketOwnerCondition.EXPECTED_BUCKET_OWNER))
+    when(headers.getHeaderString(S3Consts.EXPECTED_BUCKET_OWNER_HEADER))
         .thenReturn("wrongOwner");
 
     ByteArrayInputStream body =

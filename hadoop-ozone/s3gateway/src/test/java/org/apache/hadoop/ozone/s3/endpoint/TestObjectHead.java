@@ -42,6 +42,7 @@ import org.apache.hadoop.ozone.client.OzoneClient;
 import org.apache.hadoop.ozone.client.OzoneClientStub;
 import org.apache.hadoop.ozone.client.io.OzoneOutputStream;
 import org.apache.hadoop.ozone.s3.exception.OS3Exception;
+import org.apache.hadoop.ozone.s3.util.S3Consts;
 import org.apache.http.HttpStatus;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -202,7 +203,7 @@ public class TestObjectHead {
     out.close();
 
     HttpHeaders headers = mock(HttpHeaders.class);
-    when(headers.getHeaderString(BucketOwnerCondition.EXPECTED_BUCKET_OWNER))
+    when(headers.getHeaderString(S3Consts.EXPECTED_BUCKET_OWNER_HEADER))
         .thenReturn("defaultOwner");
     keyEndpoint.setHeaders(headers);
     Response response = keyEndpoint.head(bucketName, "key1");
@@ -220,7 +221,7 @@ public class TestObjectHead {
     out.close();
 
     HttpHeaders headers = mock(HttpHeaders.class);
-    when(headers.getHeaderString(BucketOwnerCondition.EXPECTED_BUCKET_OWNER))
+    when(headers.getHeaderString(S3Consts.EXPECTED_BUCKET_OWNER_HEADER))
         .thenReturn("wrongOwner");
     keyEndpoint.setHeaders(headers);
     OS3Exception exception =

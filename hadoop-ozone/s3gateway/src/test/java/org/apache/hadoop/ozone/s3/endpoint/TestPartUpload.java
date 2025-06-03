@@ -51,6 +51,7 @@ import org.apache.hadoop.ozone.client.OzoneClient;
 import org.apache.hadoop.ozone.client.OzoneClientStub;
 import org.apache.hadoop.ozone.client.OzoneMultipartUploadPartListParts;
 import org.apache.hadoop.ozone.s3.exception.OS3Exception;
+import org.apache.hadoop.ozone.s3.util.S3Consts;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.mockito.MockedStatic;
@@ -275,7 +276,7 @@ public class TestPartUpload {
         "STANDARD");
     when(headers.getHeaderString(X_AMZ_CONTENT_SHA256))
         .thenReturn("mockSignature");
-    when(headers.getHeaderString(BucketOwnerCondition.EXPECTED_BUCKET_OWNER))
+    when(headers.getHeaderString(S3Consts.EXPECTED_BUCKET_OWNER_HEADER))
         .thenReturn("defaultOwner");
     rest.setHeaders(headers);
 
@@ -299,7 +300,7 @@ public class TestPartUpload {
         new ByteArrayInputStream(content.getBytes(UTF_8));
 
     HttpHeaders headers = Mockito.mock(HttpHeaders.class);
-    when(headers.getHeaderString(BucketOwnerCondition.EXPECTED_BUCKET_OWNER))
+    when(headers.getHeaderString(S3Consts.EXPECTED_BUCKET_OWNER_HEADER))
         .thenReturn("wrongOwner");
     rest.setHeaders(headers);
     OS3Exception exception =

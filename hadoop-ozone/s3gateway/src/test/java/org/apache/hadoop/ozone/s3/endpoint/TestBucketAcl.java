@@ -38,6 +38,7 @@ import org.apache.hadoop.ozone.client.OzoneClient;
 import org.apache.hadoop.ozone.client.OzoneClientStub;
 import org.apache.hadoop.ozone.client.OzoneVolume;
 import org.apache.hadoop.ozone.s3.exception.OS3Exception;
+import org.apache.hadoop.ozone.s3.util.S3Consts;
 import org.apache.hadoop.ozone.security.acl.IAccessAuthorizer;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
@@ -262,7 +263,7 @@ public class TestBucketAcl {
 
   @Test
   public void testPassBucketOwnerCondition() throws Exception {
-    when(headers.getHeaderString(BucketOwnerCondition.EXPECTED_BUCKET_OWNER))
+    when(headers.getHeaderString(S3Consts.EXPECTED_BUCKET_OWNER_HEADER))
         .thenReturn("defaultOwner");
     when(parameterMap.containsKey(ACL_MARKER)).thenReturn(true);
     Response response =
@@ -273,7 +274,7 @@ public class TestBucketAcl {
 
   @Test
   public void testFailedBucketOwnerCondition() {
-    when(headers.getHeaderString(BucketOwnerCondition.EXPECTED_BUCKET_OWNER))
+    when(headers.getHeaderString(S3Consts.EXPECTED_BUCKET_OWNER_HEADER))
         .thenReturn("wrongOwner");
     when(parameterMap.containsKey(ACL_MARKER)).thenReturn(true);
 

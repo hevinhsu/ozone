@@ -19,6 +19,7 @@ package org.apache.hadoop.ozone.s3.endpoint;
 
 import javax.ws.rs.core.HttpHeaders;
 import org.apache.hadoop.ozone.om.exceptions.OMException;
+import org.apache.hadoop.ozone.s3.util.S3Consts;
 
 /**
  * Bucket owner condition to verify bucket ownership.
@@ -28,8 +29,6 @@ import org.apache.hadoop.ozone.om.exceptions.OMException;
  */
 public final class BucketOwnerCondition {
 
-  public static final String EXPECTED_BUCKET_OWNER = "x-amz-expected-bucket-owner";
-  public static final String EXPECTED_SOURCE_BUCKET_OWNER = "x-amz-source-expected-bucket-owner";
   public static final String ERROR_MESSAGE = "Expected bucket owner does not match";
 
   private BucketOwnerCondition() {
@@ -49,7 +48,7 @@ public final class BucketOwnerCondition {
       return;
     }
 
-    final String expectedBucketOwner = headers.getHeaderString(EXPECTED_BUCKET_OWNER);
+    final String expectedBucketOwner = headers.getHeaderString(S3Consts.EXPECTED_BUCKET_OWNER_HEADER);
     // client does not use this feature
     if (expectedBucketOwner == null) {
       return;
@@ -74,8 +73,8 @@ public final class BucketOwnerCondition {
       return;
     }
 
-    final String expectedSourceOwner = headers.getHeaderString(EXPECTED_SOURCE_BUCKET_OWNER);
-    final String expectedDestOwner = headers.getHeaderString(EXPECTED_BUCKET_OWNER);
+    final String expectedSourceOwner = headers.getHeaderString(S3Consts.EXPECTED_SOURCE_BUCKET_OWNER_HEADER);
+    final String expectedDestOwner = headers.getHeaderString(S3Consts.EXPECTED_BUCKET_OWNER_HEADER);
 
     // expectedSourceOwner is null, means the client does not want to check source owner
     if (expectedSourceOwner != null && !sourceOwner.equals(expectedSourceOwner)) {

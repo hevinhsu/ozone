@@ -38,6 +38,7 @@ import org.apache.hadoop.ozone.client.OzoneClientStub;
 import org.apache.hadoop.ozone.client.OzoneKey;
 import org.apache.hadoop.ozone.s3.endpoint.MultiDeleteRequest.DeleteObject;
 import org.apache.hadoop.ozone.s3.exception.OS3Exception;
+import org.apache.hadoop.ozone.s3.util.S3Consts;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.Test;
 
@@ -116,7 +117,7 @@ public class TestObjectMultiDelete {
   @Test
   public void testPassBucketOwnerCondition() throws Exception {
     HttpHeaders headers = mock(HttpHeaders.class);
-    when(headers.getHeaderString(BucketOwnerCondition.EXPECTED_BUCKET_OWNER))
+    when(headers.getHeaderString(S3Consts.EXPECTED_BUCKET_OWNER_HEADER))
         .thenReturn("defaultOwner");
 
     MultiDeleteRequest mdr = new MultiDeleteRequest();
@@ -130,7 +131,7 @@ public class TestObjectMultiDelete {
   @Test
   public void testFailedBucketOwnerCondition() {
     HttpHeaders headers = mock(HttpHeaders.class);
-    when(headers.getHeaderString(BucketOwnerCondition.EXPECTED_BUCKET_OWNER))
+    when(headers.getHeaderString(S3Consts.EXPECTED_BUCKET_OWNER_HEADER))
         .thenReturn("wrongOwner");
 
     MultiDeleteRequest mdr = new MultiDeleteRequest();

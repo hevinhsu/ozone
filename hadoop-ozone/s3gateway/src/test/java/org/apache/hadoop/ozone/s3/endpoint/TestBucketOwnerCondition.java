@@ -25,6 +25,7 @@ import static org.mockito.Mockito.when;
 
 import javax.ws.rs.core.HttpHeaders;
 import org.apache.hadoop.ozone.om.exceptions.OMException;
+import org.apache.hadoop.ozone.s3.util.S3Consts;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
@@ -48,37 +49,37 @@ public class TestBucketOwnerCondition {
 
   @Test
   public void testBucketOwnerConditionNotEnable() {
-    when(headers.getHeaderString(BucketOwnerCondition.EXPECTED_BUCKET_OWNER)).thenReturn(null);
+    when(headers.getHeaderString(S3Consts.EXPECTED_BUCKET_OWNER_HEADER)).thenReturn(null);
     assertDoesNotThrow(() -> BucketOwnerCondition.verify(headers, "test"));
 
-    when(headers.getHeaderString(BucketOwnerCondition.EXPECTED_SOURCE_BUCKET_OWNER)).thenReturn(null);
+    when(headers.getHeaderString(S3Consts.EXPECTED_SOURCE_BUCKET_OWNER_HEADER)).thenReturn(null);
     assertDoesNotThrow(() -> BucketOwnerCondition.verifyCopyOperation(null, "test", "test"));
   }
 
   @Test
   public void testPassExpectedBucketOwner() {
-    when(headers.getHeaderString(BucketOwnerCondition.EXPECTED_BUCKET_OWNER)).thenReturn("test");
+    when(headers.getHeaderString(S3Consts.EXPECTED_BUCKET_OWNER_HEADER)).thenReturn("test");
     assertDoesNotThrow(() -> BucketOwnerCondition.verify(headers, "test"));
   }
 
   @Test
   public void testFailExpectedBucketOwner() {
-    when(headers.getHeaderString(BucketOwnerCondition.EXPECTED_BUCKET_OWNER)).thenReturn("wrong");
+    when(headers.getHeaderString(S3Consts.EXPECTED_BUCKET_OWNER_HEADER)).thenReturn("wrong");
     OMException exception = assertThrows(OMException.class, () -> BucketOwnerCondition.verify(headers, "test"));
     assertThat(exception).hasMessageContaining(BucketOwnerCondition.ERROR_MESSAGE);
   }
 
   @Test
   public void testCopyOperationPass() {
-    when(headers.getHeaderString(BucketOwnerCondition.EXPECTED_SOURCE_BUCKET_OWNER)).thenReturn("source");
-    when(headers.getHeaderString(BucketOwnerCondition.EXPECTED_BUCKET_OWNER)).thenReturn("dest");
+    when(headers.getHeaderString(S3Consts.EXPECTED_SOURCE_BUCKET_OWNER_HEADER)).thenReturn("source");
+    when(headers.getHeaderString(S3Consts.EXPECTED_BUCKET_OWNER_HEADER)).thenReturn("dest");
     assertDoesNotThrow(() -> BucketOwnerCondition.verifyCopyOperation(headers, "source", "dest"));
   }
 
   @Test
   public void testCopyOperationFailedOnSourceBucketOwner() {
-    when(headers.getHeaderString(BucketOwnerCondition.EXPECTED_SOURCE_BUCKET_OWNER)).thenReturn("source");
-    when(headers.getHeaderString(BucketOwnerCondition.EXPECTED_BUCKET_OWNER)).thenReturn("dest");
+    when(headers.getHeaderString(S3Consts.EXPECTED_SOURCE_BUCKET_OWNER_HEADER)).thenReturn("source");
+    when(headers.getHeaderString(S3Consts.EXPECTED_BUCKET_OWNER_HEADER)).thenReturn("dest");
     OMException exception =
         assertThrows(OMException.class, () -> BucketOwnerCondition.verifyCopyOperation(headers, "wrong", "dest"));
     assertThat(exception).hasMessageContaining(BucketOwnerCondition.ERROR_MESSAGE);
@@ -86,8 +87,8 @@ public class TestBucketOwnerCondition {
 
   @Test
   public void testCopyOperationFailedOnDestBucketOwner() {
-    when(headers.getHeaderString(BucketOwnerCondition.EXPECTED_SOURCE_BUCKET_OWNER)).thenReturn("source");
-    when(headers.getHeaderString(BucketOwnerCondition.EXPECTED_BUCKET_OWNER)).thenReturn("dest");
+    when(headers.getHeaderString(S3Consts.EXPECTED_SOURCE_BUCKET_OWNER_HEADER)).thenReturn("source");
+    when(headers.getHeaderString(S3Consts.EXPECTED_BUCKET_OWNER_HEADER)).thenReturn("dest");
     OMException exception =
         assertThrows(OMException.class, () -> BucketOwnerCondition.verifyCopyOperation(headers, "source", "wrong"));
     assertThat(exception).hasMessageContaining(BucketOwnerCondition.ERROR_MESSAGE);

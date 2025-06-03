@@ -40,6 +40,7 @@ import org.apache.hadoop.ozone.s3.RequestIdentifier;
 import org.apache.hadoop.ozone.s3.commontypes.EncodingTypeObject;
 import org.apache.hadoop.ozone.s3.exception.OS3Exception;
 import org.apache.hadoop.ozone.s3.exception.S3ErrorTable;
+import org.apache.hadoop.ozone.s3.util.S3Consts;
 import org.apache.hadoop.security.UserGroupInformation;
 import org.junit.jupiter.api.Test;
 import org.mockito.Mockito;
@@ -585,7 +586,7 @@ public class TestBucketList {
   @Test
   public void testPassBucketOwnerCondition() throws Exception {
     HttpHeaders headers = Mockito.mock(HttpHeaders.class);
-    when(headers.getHeaderString(BucketOwnerCondition.EXPECTED_BUCKET_OWNER))
+    when(headers.getHeaderString(S3Consts.EXPECTED_BUCKET_OWNER_HEADER))
         .thenReturn("defaultOwner");
 
     OzoneClient client = createClientWithKeys("file1", "dir1/file2");
@@ -603,7 +604,7 @@ public class TestBucketList {
   @Test
   public void testFailedBucketOwnerCondition() throws Exception {
     HttpHeaders headers = Mockito.mock(HttpHeaders.class);
-    when(headers.getHeaderString(BucketOwnerCondition.EXPECTED_BUCKET_OWNER))
+    when(headers.getHeaderString(S3Consts.EXPECTED_BUCKET_OWNER_HEADER))
         .thenReturn("wrongOwner");
 
     OzoneClient client = createClientWithKeys("file1", "dir1/file2");

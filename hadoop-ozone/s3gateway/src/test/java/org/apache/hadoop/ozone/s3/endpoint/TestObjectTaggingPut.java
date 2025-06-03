@@ -200,7 +200,7 @@ public class TestObjectTaggingPut {
   @Test
   public void testPassBucketOwnerCondition() throws Exception {
     HttpHeaders headers = Mockito.mock(HttpHeaders.class);
-    when(headers.getHeaderString(BucketOwnerCondition.EXPECTED_BUCKET_OWNER))
+    when(headers.getHeaderString(S3Consts.EXPECTED_BUCKET_OWNER_HEADER))
         .thenReturn("defaultOwner");
     objectEndpoint.setHeaders(headers);
     Response response = objectEndpoint.put(BUCKET_NAME, KEY_NAME, 0, 1, null,
@@ -211,7 +211,7 @@ public class TestObjectTaggingPut {
   @Test
   public void testFailedBucketOwnerCondition() {
     HttpHeaders headers = Mockito.mock(HttpHeaders.class);
-    when(headers.getHeaderString(BucketOwnerCondition.EXPECTED_BUCKET_OWNER))
+    when(headers.getHeaderString(S3Consts.EXPECTED_BUCKET_OWNER_HEADER))
         .thenReturn("wrongOwner");
     objectEndpoint.setHeaders(headers);
     OS3Exception exception =

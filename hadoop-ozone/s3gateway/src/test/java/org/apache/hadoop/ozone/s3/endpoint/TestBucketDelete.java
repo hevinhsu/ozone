@@ -33,6 +33,7 @@ import org.apache.hadoop.ozone.client.OzoneClient;
 import org.apache.hadoop.ozone.client.OzoneClientStub;
 import org.apache.hadoop.ozone.s3.exception.OS3Exception;
 import org.apache.hadoop.ozone.s3.exception.S3ErrorTable;
+import org.apache.hadoop.ozone.s3.util.S3Consts;
 import org.apache.http.HttpStatus;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -102,7 +103,7 @@ public class TestBucketDelete {
 
   @Test
   public void testPassBucketOwnerCondition() throws Exception {
-    when(httpHeaders.getHeaderString(BucketOwnerCondition.EXPECTED_BUCKET_OWNER))
+    when(httpHeaders.getHeaderString(S3Consts.EXPECTED_BUCKET_OWNER_HEADER))
         .thenReturn("defaultOwner");
     Response response = bucketEndpoint.delete(bucketName, httpHeaders);
     assertEquals(HttpStatus.SC_NO_CONTENT, response.getStatus());
@@ -110,7 +111,7 @@ public class TestBucketDelete {
 
   @Test
   public void testFailedBucketOwnerCondition() {
-    when(httpHeaders.getHeaderString(BucketOwnerCondition.EXPECTED_BUCKET_OWNER))
+    when(httpHeaders.getHeaderString(S3Consts.EXPECTED_BUCKET_OWNER_HEADER))
         .thenReturn("wrongOwner");
 
     OS3Exception exception =
