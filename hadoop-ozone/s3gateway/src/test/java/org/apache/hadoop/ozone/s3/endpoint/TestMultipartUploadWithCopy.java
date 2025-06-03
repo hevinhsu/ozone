@@ -316,30 +316,30 @@ public class TestMultipartUploadWithCopy {
 
   @Test
   public void testPassBucketOwnerCondition() throws Exception {
-
+    String correctKey = "correctKey";
     // Initiate multipart upload
-    String uploadID = initiateMultipartUpload(KEY);
+    String uploadID = initiateMultipartUpload(correctKey);
 
     List<Part> partsList = new ArrayList<>();
 
     // Upload parts
     String content = "Multipart Upload 1";
 
-    Part part1 = uploadPart(KEY, uploadID, 1, content);
+    Part part1 = uploadPart(correctKey, uploadID, 1, content);
     partsList.add(part1);
 
     Part part2 =
-        uploadPartWithCopy(KEY, uploadID, 2,
+        uploadPartWithCopy(correctKey, uploadID, 2,
             OzoneConsts.S3_BUCKET + "/" + EXISTING_KEY, null);
     partsList.add(part2);
 
     Part part3 =
-        uploadPartWithCopy(KEY, uploadID, 3,
+        uploadPartWithCopy(correctKey, uploadID, 3,
             OzoneConsts.S3_BUCKET + "/" + EXISTING_KEY, "bytes=0-3");
     partsList.add(part3);
 
     Part part4 =
-        uploadPartWithCopy(KEY, uploadID, 3,
+        uploadPartWithCopy(correctKey, uploadID, 3,
             OzoneConsts.S3_BUCKET + "/" + EXISTING_KEY, "bytes=0-3",
             beforeSourceKeyModificationTimeStr,
             afterSourceKeyModificationTimeStr
@@ -356,7 +356,7 @@ public class TestMultipartUploadWithCopy {
         .thenReturn("defaultOwner");
     REST.setHeaders(headers);
 
-    Response response = REST.completeMultipartUpload(OzoneConsts.S3_BUCKET, KEY,
+    Response response = REST.completeMultipartUpload(OzoneConsts.S3_BUCKET, correctKey,
         uploadID, completeMultipartUploadRequest);
 
     assertEquals(200, response.getStatus());
@@ -364,30 +364,30 @@ public class TestMultipartUploadWithCopy {
 
   @Test
   public void testFailedBucketOwnerCondition() throws Exception {
-
+    String incorrectKey = "incorrectKey";
     // Initiate multipart upload
-    String uploadID = initiateMultipartUpload(KEY);
+    String uploadID = initiateMultipartUpload(incorrectKey);
 
     List<Part> partsList = new ArrayList<>();
 
     // Upload parts
     String content = "Multipart Upload 1";
 
-    Part part1 = uploadPart(KEY, uploadID, 1, content);
+    Part part1 = uploadPart(incorrectKey, uploadID, 1, content);
     partsList.add(part1);
 
     Part part2 =
-        uploadPartWithCopy(KEY, uploadID, 2,
+        uploadPartWithCopy(incorrectKey, uploadID, 2,
             OzoneConsts.S3_BUCKET + "/" + EXISTING_KEY, null);
     partsList.add(part2);
 
     Part part3 =
-        uploadPartWithCopy(KEY, uploadID, 3,
+        uploadPartWithCopy(incorrectKey, uploadID, 3,
             OzoneConsts.S3_BUCKET + "/" + EXISTING_KEY, "bytes=0-3");
     partsList.add(part3);
 
     Part part4 =
-        uploadPartWithCopy(KEY, uploadID, 3,
+        uploadPartWithCopy(incorrectKey, uploadID, 3,
             OzoneConsts.S3_BUCKET + "/" + EXISTING_KEY, "bytes=0-3",
             beforeSourceKeyModificationTimeStr,
             afterSourceKeyModificationTimeStr
@@ -405,7 +405,7 @@ public class TestMultipartUploadWithCopy {
     REST.setHeaders(headers);
 
     OS3Exception exception =
-        assertThrows(OS3Exception.class, () -> REST.completeMultipartUpload(OzoneConsts.S3_BUCKET, KEY,
+        assertThrows(OS3Exception.class, () -> REST.completeMultipartUpload(OzoneConsts.S3_BUCKET, incorrectKey,
             uploadID, completeMultipartUploadRequest));
 
     assertEquals(ACCESS_DENIED.getMessage(), exception.getMessage());
