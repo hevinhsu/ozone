@@ -314,7 +314,7 @@ public abstract class AbstractS3BucketVerificationConditionUsingS3SDKV2Tests ext
     }
 
     @Test
-    public void testMultipartByCopy() {
+    public void testCreateMultipartByCopy() {
       String sourceKey = "test-multipart-by-copy-source-key";
       String destKey = "test-multipart-by-copy-dest-key";
 
