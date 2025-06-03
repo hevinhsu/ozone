@@ -40,9 +40,9 @@ import org.junit.jupiter.api.Test;
  */
 public class TestAbortMultipartUpload {
 
-  private static HttpHeaders headers;
-  private static ObjectEndpoint rest;
-  private static String uploadID;
+  private HttpHeaders headers;
+  private ObjectEndpoint rest;
+  private String uploadID;
 
   @BeforeEach
   public void setup() throws Exception {

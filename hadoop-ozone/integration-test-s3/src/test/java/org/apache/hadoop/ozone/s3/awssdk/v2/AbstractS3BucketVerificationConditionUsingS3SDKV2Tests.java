@@ -83,6 +83,11 @@ public abstract class AbstractS3BucketVerificationConditionUsingS3SDKV2Tests ext
 
   private static MiniOzoneCluster cluster = null;
   private static S3Client s3Client = null;
+  private static final String DEFAULT_BUCKET_NAME = "test-bucket-verification-condition-bucket";
+  private static final String WRONG_OWNER = "wrong-owner";
+  private static String correctOwner;
+  private static final String TEST_KEY = "test-key";
+  private static final String TEST_CONTENT = "hello-ozone";
 
   /**
    * Create a MiniOzoneCluster with S3G enabled for testing.
@@ -115,12 +120,6 @@ public abstract class AbstractS3BucketVerificationConditionUsingS3SDKV2Tests ext
       cluster.shutdown();
     }
   }
-
-  private static final String DEFAULT_BUCKET_NAME = "test-bucket-verification-condition-bucket";
-  private static final String WRONG_OWNER = "wrong-owner";
-  private static String correctOwner;
-  private static final String TEST_KEY = "test-key";
-  private static final String TEST_CONTENT = "hello-ozone";
 
   static void createDefaultResource() {
     // bucket
@@ -442,7 +441,7 @@ public abstract class AbstractS3BucketVerificationConditionUsingS3SDKV2Tests ext
 
       String uploadId = multipartUploadResponse.uploadId();
 
-      UploadPartResponse uploadPartResponse = s3Client.uploadPart(
+      s3Client.uploadPart(
           UploadPartRequest.builder()
               .bucket(DEFAULT_BUCKET_NAME)
               .key(newKey)
