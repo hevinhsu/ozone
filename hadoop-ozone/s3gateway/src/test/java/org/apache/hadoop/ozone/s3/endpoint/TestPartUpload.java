@@ -258,7 +258,6 @@ public class TestPartUpload {
     }
   }
 
-
   @Test
   public void testBucketOwnerCondition() throws Exception {
     Response response = rest.initializeMultipartUpload(OzoneConsts.S3_BUCKET,
