@@ -108,7 +108,7 @@ public class S3Owner {
     if (expectedBucketOwner.equals(bucketOwner)) {
       return;
     }
-    throw S3ErrorTable.newError(S3ErrorTable.BUCKET_OWNER_MISSMATCH, bucketName);
+    throw S3ErrorTable.newError(S3ErrorTable.BUCKET_OWNER_MISMATCH, bucketName);
   }
 
   /**
@@ -132,12 +132,12 @@ public class S3Owner {
 
     // expectedSourceOwner is null, means the client does not want to check source owner
     if (expectedSourceOwner != null && sourceOwner != null && !sourceOwner.equals(expectedSourceOwner)) {
-      throw S3ErrorTable.newError(S3ErrorTable.BUCKET_OWNER_MISSMATCH, bucketName);
+      throw S3ErrorTable.newError(S3ErrorTable.BUCKET_OWNER_MISMATCH, bucketName);
     }
 
     // expectedDestOwner is null, means the client does not want to check destination owner
     if (expectedDestOwner != null && destOwner != null && !destOwner.equals(expectedDestOwner)) {
-      throw S3ErrorTable.newError(S3ErrorTable.BUCKET_OWNER_MISSMATCH, bucketName);
+      throw S3ErrorTable.newError(S3ErrorTable.BUCKET_OWNER_MISMATCH, bucketName);
     }
   }
 }
