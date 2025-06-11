@@ -24,6 +24,7 @@ import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 
+import java.io.IOException;
 import javax.ws.rs.core.HttpHeaders;
 import javax.ws.rs.core.Response;
 import org.apache.hadoop.ozone.OzoneConsts;
@@ -73,15 +74,8 @@ public class TestBucketHead {
   }
 
   @Test
-  public void testPassBucketOwnerCondition() throws Exception {
-    when(httpHeaders.getHeaderString(S3Consts.EXPECTED_BUCKET_OWNER_HEADER))
-        .thenReturn("defaultOwner");
-    Response response = bucketEndpoint.head(bucketName, httpHeaders);
-    assertEquals(200, response.getStatus());
-  }
-
-  @Test
-  public void testFailedBucketOwnerCondition() {
+  public void testBucketOwnerCondition() throws Exception {
+    // Use wrong bucket owner header to fail bucket owner condition verification
     when(httpHeaders.getHeaderString(S3Consts.EXPECTED_BUCKET_OWNER_HEADER))
         .thenReturn("wrongOwner");
 
@@ -89,5 +83,13 @@ public class TestBucketHead {
         assertThrows(OS3Exception.class, () -> bucketEndpoint.head(bucketName, httpHeaders));
 
     assertEquals(ACCESS_DENIED.getMessage(), exception.getMessage());
+
+    // Use correct bucket owner header to pass bucket owner condition verification
+    when(httpHeaders.getHeaderString(S3Consts.EXPECTED_BUCKET_OWNER_HEADER))
+        .thenReturn("defaultOwner");
+
+    Response response = bucketEndpoint.head(bucketName, httpHeaders);
+
+    assertEquals(200, response.getStatus());
   }
 }
