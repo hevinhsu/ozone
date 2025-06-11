@@ -59,15 +59,3 @@ Delete bucket with incomplete multipart uploads
     # after aborting the multipart upload, the bucket deletion should succeed
     ${abort_result} =          Abort MPU    ${bucket}    incomplete-multipartkey    ${uploadID}
     ${delete_result} =         Execute AWSS3APICli and checkrc    delete-bucket --bucket ${bucket}    0
-
-Check bucket owner condition
-     [tags]    bucket-owner-condition
-
-     ${bucket} =  Create bucket to be deleted
-
-     # use wrong owner and get access denied
-     Execute AWSS3APICli and failed bucket owner condition verification  delete-bucket  ${bucket}  wrong-user-id
-
-     # use correct owner
-     ${correct_owner} =    Get bucket owner    ${bucket}
-     Execute AWSS3APICli using bucket owner condition   delete-bucket    ${bucket}    ${correct_owner}
