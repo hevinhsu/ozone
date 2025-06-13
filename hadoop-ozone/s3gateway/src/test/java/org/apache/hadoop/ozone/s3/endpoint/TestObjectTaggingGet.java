@@ -88,14 +88,14 @@ public class TestObjectTaggingGet {
   @Test
   public void testGetTagging() throws IOException, OS3Exception {
     //WHEN
-    Response response = rest.get(BUCKET_NAME, KEY_WITH_TAG, 0, null, 0, null, "");
+    Response response = rest.get(BUCKET_NAME, KEY_WITH_TAG,  0, null, 0, null, "");
 
     assertEquals(HTTP_OK, response.getStatus());
     S3Tagging s3Tagging = (S3Tagging) response.getEntity();
     assertNotNull(s3Tagging);
     assertNotNull(s3Tagging.getTagSet());
     assertEquals(2, s3Tagging.getTagSet().getTags().size());
-    for (Tag tag : s3Tagging.getTagSet().getTags()) {
+    for (Tag tag: s3Tagging.getTagSet().getTags()) {
       if (tag.getKey().equals("tag1")) {
         assertEquals("value1", tag.getValue());
       } else if (tag.getKey().equals("tag2")) {
@@ -109,7 +109,7 @@ public class TestObjectTaggingGet {
   @Test
   public void testGetTaggingNoKeyFound() throws Exception {
     try {
-      rest.get(BUCKET_NAME, "nonexistent", 0, null, 0, null, "");
+      rest.get(BUCKET_NAME, "nonexistent",  0, null, 0, null, "");
       fail("Expected an OS3Exception to be thrown");
     } catch (OS3Exception ex) {
       assertEquals(HTTP_NOT_FOUND, ex.getHttpCode());
