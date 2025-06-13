@@ -254,5 +254,4 @@ public class TestBucketAcl {
         bucketEndpoint.getAcl("bucket-not-exist"));
     assertEquals(e.getHttpCode(), HTTP_NOT_FOUND);
   }
-
 }
