@@ -58,7 +58,6 @@ public class TestBucketDelete {
     bucketEndpoint = EndpointBuilder.newBucketEndpointBuilder()
         .setClient(clientStub)
         .build();
-
     httpHeaders = mock(HttpHeaders.class);
   }
 
