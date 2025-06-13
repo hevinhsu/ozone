@@ -530,6 +530,7 @@ public class TestBucketList {
   @Test
   public void testListObjectsWithInvalidMaxKeys() throws Exception {
     OzoneClient client = createClientWithKeys("file1");
+    client.getObjectStore().createS3Bucket("bucket");
     BucketEndpoint bucketEndpoint = EndpointBuilder.newBucketEndpointBuilder()
         .setClient(client)
         .build();
@@ -580,26 +581,6 @@ public class TestBucketList {
 
     // Assert: The number of returned keys should be capped at the configured limit
     assertEquals(Integer.parseInt(configuredMaxKeysLimit), response.getContents().size());
-  }
-
-  @Test
-  public void testPassBucketOwnerCondition() throws Exception {
-    HttpHeaders headers = Mockito.mock(HttpHeaders.class);
-    when(headers.getHeaderString(S3Consts.EXPECTED_BUCKET_OWNER_HEADER))
-        .thenReturn("defaultOwner");
-
-    OzoneClient client = createClientWithKeys("file1", "dir1/file2");
-
-    BucketEndpoint getBucket = EndpointBuilder.newBucketEndpointBuilder()
-        .setClient(client)
-        .build();
-
-    Response response =
-        getBucket.get("b1", "/", null, null, 100, "",
-                null, null, null, null, null, null,
-            0, headers);
-
-    assertEquals(200, response.getStatus());
   }
 
   private void assertEncodingTypeObject(

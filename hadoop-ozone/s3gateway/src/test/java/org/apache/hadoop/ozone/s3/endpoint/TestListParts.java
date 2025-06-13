@@ -135,15 +135,4 @@ public class TestListParts {
           ex.getErrorMessage());
     }
   }
-
-  @Test
-  public void testPassBucketOwnerCondition() throws Exception {
-    HttpHeaders headers = mock(HttpHeaders.class);
-    when(headers.getHeaderString(S3Consts.EXPECTED_BUCKET_OWNER_HEADER))
-        .thenReturn("defaultOwner");
-    rest.setHeaders(headers);
-    Response response = rest.get(OzoneConsts.S3_BUCKET, OzoneConsts.KEY, 0,
-        uploadID, 3, "0", null);
-    assertEquals(200, response.getStatus());
-  }
 }
