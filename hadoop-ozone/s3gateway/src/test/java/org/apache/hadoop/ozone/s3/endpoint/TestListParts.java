@@ -18,13 +18,11 @@
 package org.apache.hadoop.ozone.s3.endpoint;
 
 import static java.nio.charset.StandardCharsets.UTF_8;
-import static org.apache.hadoop.ozone.s3.exception.S3ErrorTable.ACCESS_DENIED;
 import static org.apache.hadoop.ozone.s3.util.S3Consts.STORAGE_CLASS_HEADER;
 import static org.apache.hadoop.ozone.s3.util.S3Consts.X_AMZ_CONTENT_SHA256;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
-import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
@@ -146,31 +144,6 @@ public class TestListParts {
     rest.setHeaders(headers);
     Response response = rest.get(OzoneConsts.S3_BUCKET, OzoneConsts.KEY, 0,
         uploadID, 3, "0", null);
-    assertEquals(200, response.getStatus());
-  }
-
-  @Test
-  public void testBucketOwnerCondition() throws Exception {
-    HttpHeaders headers = mock(HttpHeaders.class);
-
-    // Use wrong bucket owner header to test access denied
-    when(headers.getHeaderString(S3Consts.EXPECTED_BUCKET_OWNER_HEADER))
-        .thenReturn("wrongOwner");
-    rest.setHeaders(headers);
-
-    OS3Exception exception =
-        assertThrows(OS3Exception.class, () -> rest.get(OzoneConsts.S3_BUCKET, OzoneConsts.KEY, 0,
-            uploadID, 3, "0", null));
-
-    assertEquals(ACCESS_DENIED.getMessage(), exception.getMessage());
-
-    // use correct bucket owner header to pass bucket owner condition verification
-    when(headers.getHeaderString(S3Consts.EXPECTED_BUCKET_OWNER_HEADER))
-        .thenReturn("defaultOwner");
-
-    Response response = rest.get(OzoneConsts.S3_BUCKET, OzoneConsts.KEY, 0,
-        uploadID, 3, "0", null);
-
     assertEquals(200, response.getStatus());
   }
 }

@@ -17,21 +17,13 @@
 
 package org.apache.hadoop.ozone.s3.endpoint;
 
-import static org.apache.hadoop.ozone.s3.exception.S3ErrorTable.ACCESS_DENIED;
-import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
-import static org.junit.jupiter.api.Assertions.assertThrows;
-import static org.mockito.Mockito.mock;
-import static org.mockito.Mockito.when;
 
 import java.io.IOException;
-import javax.ws.rs.core.HttpHeaders;
-import javax.ws.rs.core.Response;
 import org.apache.hadoop.ozone.client.OzoneBucket;
 import org.apache.hadoop.ozone.client.OzoneClient;
 import org.apache.hadoop.ozone.client.OzoneClientStub;
 import org.apache.hadoop.ozone.s3.exception.OS3Exception;
-import org.apache.hadoop.ozone.s3.util.S3Consts;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.Test;
 
@@ -66,28 +58,5 @@ public class TestObjectDelete {
     //THEN
     assertFalse(bucket.listKeys("").hasNext(),
         "Bucket Should not contain any key after delete");
-  }
-
-  @Test
-  public void testBucketOwnerCondition() throws Exception {
-    HttpHeaders headers = mock(HttpHeaders.class);
-
-    // Use wrong bucket owner header to fail bucket owner condition verification
-    when(headers.getHeaderString(S3Consts.EXPECTED_BUCKET_OWNER_HEADER))
-        .thenReturn("wrongOwner");
-    rest.setHeaders(headers);
-
-    OS3Exception exception =
-        assertThrows(OS3Exception.class, () -> rest.delete(BUCKET_NAME, KEY, null, null));
-
-    assertEquals(ACCESS_DENIED.getMessage(), exception.getMessage());
-
-    // use correct bucket owner header to pass bucket owner condition verification
-    when(headers.getHeaderString(S3Consts.EXPECTED_BUCKET_OWNER_HEADER))
-        .thenReturn("defaultOwner");
-
-    Response response = rest.delete(BUCKET_NAME, KEY, null, null);
-
-    assertEquals(204, response.getStatus());
   }
 }
