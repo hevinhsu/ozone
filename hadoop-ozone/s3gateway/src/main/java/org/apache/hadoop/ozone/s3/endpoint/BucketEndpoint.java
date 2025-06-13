@@ -444,6 +444,7 @@ public class BucketEndpoint extends EndpointBase {
     try {
       OzoneBucket bucket = getBucket(bucketName);
       S3Owner.verifyBucketOwnerCondition(httpHeaders, bucketName, bucket.getOwner());
+      deleteS3Bucket(bucketName);
     } catch (OMException ex) {
       AUDIT.logWriteFailure(
           buildAuditMessageForFailure(s3GAction, getAuditParameters(), ex));
