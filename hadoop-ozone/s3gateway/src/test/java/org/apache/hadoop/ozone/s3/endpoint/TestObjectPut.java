@@ -97,7 +97,6 @@ class TestObjectPut {
   private static final String DEST_BUCKET_NAME = "b2";
   private static final String DEST_KEY = "key=value/2";
   private static final String NO_SUCH_BUCKET = "nonexist";
-  private static final String DEFAULT_OWNER = "defaultOwner";
 
   private OzoneClient clientStub;
   private ObjectEndpoint objectEndpoint;
@@ -145,7 +144,6 @@ class TestObjectPut {
     OzoneVolume volume = clientStub.getObjectStore().getVolume(volumeName);
     BucketArgs fsoBucketArgs = BucketArgs.newBuilder()
         .setBucketLayout(BucketLayout.FILE_SYSTEM_OPTIMIZED)
-        .setOwner(DEFAULT_OWNER)
         .build();
     volume.createBucket(FSO_BUCKET_NAME, fsoBucketArgs);
     fsoBucket = volume.getBucket(FSO_BUCKET_NAME);

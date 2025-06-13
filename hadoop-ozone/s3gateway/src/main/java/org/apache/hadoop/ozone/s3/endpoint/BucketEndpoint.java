@@ -170,7 +170,7 @@ public class BucketEndpoint extends EndpointBase {
           && OZONE_URI_DELIMITER.equals(delimiter);
 
       ozoneKeyIterator = bucket.listKeys(prefix, prevKey, shallow);
-      
+
     } catch (OMException ex) {
       AUDIT.logReadFailure(
           buildAuditMessageForFailure(s3GAction, getAuditParameters(), ex));

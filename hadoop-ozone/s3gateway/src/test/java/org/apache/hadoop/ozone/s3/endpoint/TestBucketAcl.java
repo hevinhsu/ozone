@@ -32,7 +32,6 @@ import javax.servlet.http.HttpServletRequest;
 import javax.ws.rs.core.HttpHeaders;
 import javax.ws.rs.core.Response;
 import org.apache.hadoop.ozone.OzoneConsts;
-import org.apache.hadoop.ozone.client.OzoneBucket;
 import org.apache.hadoop.ozone.client.OzoneClient;
 import org.apache.hadoop.ozone.client.OzoneClientStub;
 import org.apache.hadoop.ozone.client.OzoneVolume;
@@ -65,9 +64,6 @@ public class TestBucketAcl {
     parameterMap = mock(Map.class);
     headers = mock(HttpHeaders.class);
     when(servletRequest.getParameterMap()).thenReturn(parameterMap);
-
-    OzoneBucket bucket = mock(OzoneBucket.class);
-    when(bucket.getOwner()).thenReturn("test");
 
     bucketEndpoint = EndpointBuilder.newBucketEndpointBuilder()
         .setClient(client)
