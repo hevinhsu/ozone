@@ -969,7 +969,7 @@ public class ObjectEndpoint extends EndpointBase {
     long startNanos = Time.monotonicNowNanos();
     String copyHeader = null;
     DigestInputStream digestInputStream = null;
-    final String bucket = ozoneBucket.getName();
+    final String bucketName = ozoneBucket.getName();
     try {
       String amzDecodedLength = headers.getHeaderString(DECODED_CONTENT_LENGTH_HEADER);
       S3ChunkInputStreamInfo chunkInputStreamInfo = getS3ChunkInputStreamInfo(
@@ -1006,7 +1006,7 @@ public class ObjectEndpoint extends EndpointBase {
         String sourceKey = result.getRight();
         if (S3Owner.hasBucketOwnerCondition(headers)) {
           String sourceBucketOwner = volume.getBucket(sourceBucket).getOwner();
-          S3Owner.verifyBucketOwnerConditionOnCopyOperation(headers, sourceBucket, sourceBucketOwner, bucket,
+          S3Owner.verifyBucketOwnerConditionOnCopyOperation(headers, sourceBucket, sourceBucketOwner, bucketName,
               ozoneBucket.getOwner());
         }
 
@@ -1046,7 +1046,7 @@ public class ObjectEndpoint extends EndpointBase {
                       + rangeHeader.getStartOffset() + " actual: " + skipped);
             }
             try (OzoneOutputStream ozoneOutputStream = getClientProtocol()
-                .createMultipartKey(volume.getName(), bucket, key, length,
+                .createMultipartKey(volume.getName(), bucketName, key, length,
                     partNumber, uploadID)) {
               metadataLatencyNs =
                   getMetrics().updateCopyKeyMetadataStats(startNanos);
@@ -1058,7 +1058,7 @@ public class ObjectEndpoint extends EndpointBase {
             }
           } else {
             try (OzoneOutputStream ozoneOutputStream = getClientProtocol()
-                .createMultipartKey(volume.getName(), bucket, key, length,
+                .createMultipartKey(volume.getName(), bucketName, key, length,
                     partNumber, uploadID)) {
               metadataLatencyNs =
                   getMetrics().updateCopyKeyMetadataStats(startNanos);
@@ -1075,7 +1075,7 @@ public class ObjectEndpoint extends EndpointBase {
       } else {
         long putLength;
         try (OzoneOutputStream ozoneOutputStream = getClientProtocol()
-            .createMultipartKey(volume.getName(), bucket, key, length,
+            .createMultipartKey(volume.getName(), bucketName, key, length,
                 partNumber, uploadID)) {
           metadataLatencyNs =
               getMetrics().updatePutKeyMetadataStats(startNanos);
@@ -1118,7 +1118,7 @@ public class ObjectEndpoint extends EndpointBase {
       if (ex.getResult() == ResultCodes.NO_SUCH_MULTIPART_UPLOAD_ERROR) {
         throw newError(NO_SUCH_UPLOAD, uploadID, ex);
       } else if (isAccessDenied(ex)) {
-        throw newError(S3ErrorTable.ACCESS_DENIED, bucket + "/" + key, ex);
+        throw newError(S3ErrorTable.ACCESS_DENIED, bucketName + "/" + key, ex);
       } else if (ex.getResult() == ResultCodes.INVALID_PART) {
         OS3Exception os3Exception = newError(
             S3ErrorTable.INVALID_ARGUMENT, String.valueOf(partNumber), ex);
@@ -1152,11 +1152,11 @@ public class ObjectEndpoint extends EndpointBase {
       throws IOException, OS3Exception {
     long startNanos = Time.monotonicNowNanos();
     ListPartsResponse listPartsResponse = new ListPartsResponse();
-    String bucket = ozoneBucket.getName();
+    String bucketName = ozoneBucket.getName();
     try {
       OzoneMultipartUploadPartListParts ozoneMultipartUploadPartListParts =
           ozoneBucket.listParts(key, uploadID, partNumberMarker, maxParts);
-      listPartsResponse.setBucket(bucket);
+      listPartsResponse.setBucket(bucketName);
       listPartsResponse.setKey(key);
       listPartsResponse.setUploadID(uploadID);
       listPartsResponse.setMaxParts(maxParts);
@@ -1191,7 +1191,7 @@ public class ObjectEndpoint extends EndpointBase {
         throw newError(NO_SUCH_UPLOAD, uploadID, ex);
       } else if (isAccessDenied(ex)) {
         throw newError(S3ErrorTable.ACCESS_DENIED,
-            bucket + "/" + key + "/" + uploadID, ex);
+            bucketName + "/" + key + "/" + uploadID, ex);
       }
       throw ex;
     }
