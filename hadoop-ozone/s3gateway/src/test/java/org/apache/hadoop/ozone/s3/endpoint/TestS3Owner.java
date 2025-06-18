@@ -47,6 +47,43 @@ public class TestS3Owner {
   }
 
   @Test
+  public void testHasBucketOwnerConditionWithNullHeaders() {
+    assertThat(S3Owner.hasBucketOwnerCondition(null)).isFalse();
+  }
+
+  @Test
+  public void testHasBucketOwnerConditionWithEmptyHeaders() {
+    when(headers.getHeaderString(S3Consts.EXPECTED_BUCKET_OWNER_HEADER)).thenReturn(null);
+    when(headers.getHeaderString(S3Consts.EXPECTED_SOURCE_BUCKET_OWNER_HEADER)).thenReturn(null);
+    assertThat(S3Owner.hasBucketOwnerCondition(headers)).isFalse();
+
+    when(headers.getHeaderString(S3Consts.EXPECTED_BUCKET_OWNER_HEADER)).thenReturn("");
+    when(headers.getHeaderString(S3Consts.EXPECTED_SOURCE_BUCKET_OWNER_HEADER)).thenReturn("");
+    assertThat(S3Owner.hasBucketOwnerCondition(headers)).isFalse();
+  }
+
+  @Test
+  public void testHasBucketOwnerConditionWithExpectedBucketOwnerPresent() {
+    when(headers.getHeaderString(S3Consts.EXPECTED_BUCKET_OWNER_HEADER)).thenReturn("owner1");
+    when(headers.getHeaderString(S3Consts.EXPECTED_SOURCE_BUCKET_OWNER_HEADER)).thenReturn(null);
+    assertThat(S3Owner.hasBucketOwnerCondition(headers)).isTrue();
+  }
+
+  @Test
+  public void testHasBucketOwnerConditionWithExpectedSourceBucketOwnerPresent() {
+    when(headers.getHeaderString(S3Consts.EXPECTED_BUCKET_OWNER_HEADER)).thenReturn(null);
+    when(headers.getHeaderString(S3Consts.EXPECTED_SOURCE_BUCKET_OWNER_HEADER)).thenReturn("owner2");
+    assertThat(S3Owner.hasBucketOwnerCondition(headers)).isTrue();
+  }
+
+  @Test
+  public void testHasBucketOwnerConditionWithBothPresent() {
+    when(headers.getHeaderString(S3Consts.EXPECTED_BUCKET_OWNER_HEADER)).thenReturn("owner1");
+    when(headers.getHeaderString(S3Consts.EXPECTED_SOURCE_BUCKET_OWNER_HEADER)).thenReturn("owner2");
+    assertThat(S3Owner.hasBucketOwnerCondition(headers)).isTrue();
+  }
+
+  @Test
   public void testHeaderIsNull() {
     assertDoesNotThrow(() -> S3Owner.verifyBucketOwnerCondition(null, SOURCE_BUCKET_NAME, "test"));
     assertDoesNotThrow(() -> S3Owner.verifyBucketOwnerConditionOnCopyOperation(null, SOURCE_BUCKET_NAME, "test",
