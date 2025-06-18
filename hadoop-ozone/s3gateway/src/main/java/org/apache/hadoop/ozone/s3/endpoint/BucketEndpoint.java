@@ -135,9 +135,7 @@ public class BucketEndpoint extends EndpointBase {
 
     try {
       bucket = getBucket(bucketName);
-      if (S3Owner.hasBucketOwnerCondition(headers)) {
-        S3Owner.verifyBucketOwnerCondition(headers, bucketName, bucket.getOwner());
-      }
+      S3Owner.verifyBucketOwnerCondition(headers, bucketName, bucket.getOwner());
       if (aclMarker != null) {
         s3GAction = S3GAction.GET_ACL;
         S3BucketAcl result = getAcl(bucket);
@@ -178,13 +176,7 @@ public class BucketEndpoint extends EndpointBase {
     } catch (OMException ex) {
       AUDIT.logReadFailure(
           buildAuditMessageForFailure(s3GAction, getAuditParameters(), ex));
-      if(s3GAction == S3GAction.GET_ACL) {
         getMetrics().updateGetAclFailureStats(startNanos);
-      } else if (s3GAction == S3GAction.LIST_MULTIPART_UPLOAD) {
-        getMetrics().updateListMultipartUploadsFailureStats(startNanos);
-      } else {
-        getMetrics().updateGetBucketFailureStats(startNanos);
-      }
       getMetrics().updateGetBucketFailureStats(startNanos);
       if (isAccessDenied(ex)) {
         throw newError(S3ErrorTable.ACCESS_DENIED, bucketName, ex);
@@ -423,9 +415,7 @@ public class BucketEndpoint extends EndpointBase {
     S3GAction s3GAction = S3GAction.HEAD_BUCKET;
     try {
       OzoneBucket bucket = getBucket(bucketName);
-      if (S3Owner.hasBucketOwnerCondition(headers)) {
-        S3Owner.verifyBucketOwnerCondition(headers, bucketName, bucket.getOwner());
-      }
+      S3Owner.verifyBucketOwnerCondition(headers, bucketName, bucket.getOwner());
       AUDIT.logReadSuccess(
           buildAuditMessageForSuccess(s3GAction, getAuditParameters()));
       getMetrics().updateHeadBucketSuccessStats(startNanos);
@@ -508,9 +498,7 @@ public class BucketEndpoint extends EndpointBase {
       }
       long startNanos = Time.monotonicNowNanos();
       try {
-        if (S3Owner.hasBucketOwnerCondition(headers)) {
-          S3Owner.verifyBucketOwnerCondition(headers, bucketName, bucket.getOwner());
-        }
+        S3Owner.verifyBucketOwnerCondition(headers, bucketName, bucket.getOwner());
         undeletedKeyResultMap = bucket.deleteKeys(deleteKeys, true);
         for (DeleteObject d : request.getObjects()) {
           ErrorInfo error = undeletedKeyResultMap.get(d.getKey());
@@ -605,9 +593,7 @@ public class BucketEndpoint extends EndpointBase {
 
     try {
       OzoneBucket bucket = getBucket(bucketName);
-      if (S3Owner.hasBucketOwnerCondition(headers)) {
-        S3Owner.verifyBucketOwnerCondition(headers, bucketName, bucket.getOwner());
-      }
+      S3Owner.verifyBucketOwnerCondition(headers, bucketName, bucket.getOwner());
       OzoneVolume volume = getVolume();
 
       List<OzoneAcl> ozoneAclListOnBucket = new ArrayList<>();

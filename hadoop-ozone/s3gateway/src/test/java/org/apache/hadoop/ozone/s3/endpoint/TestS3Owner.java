@@ -53,7 +53,6 @@ public class TestS3Owner {
 
   @Test
   public void testHasBucketOwnerConditionWithEmptyHeaders() {
-    HttpHeaders headers = mock(HttpHeaders.class);
     when(headers.getHeaderString(S3Consts.EXPECTED_BUCKET_OWNER_HEADER)).thenReturn(null);
     when(headers.getHeaderString(S3Consts.EXPECTED_SOURCE_BUCKET_OWNER_HEADER)).thenReturn(null);
     assertThat(S3Owner.hasBucketOwnerCondition(headers)).isFalse();
@@ -65,7 +64,6 @@ public class TestS3Owner {
 
   @Test
   public void testHasBucketOwnerConditionWithExpectedBucketOwnerPresent() {
-    HttpHeaders headers = mock(HttpHeaders.class);
     when(headers.getHeaderString(S3Consts.EXPECTED_BUCKET_OWNER_HEADER)).thenReturn("owner1");
     when(headers.getHeaderString(S3Consts.EXPECTED_SOURCE_BUCKET_OWNER_HEADER)).thenReturn(null);
     assertThat(S3Owner.hasBucketOwnerCondition(headers)).isTrue();
@@ -73,7 +71,6 @@ public class TestS3Owner {
 
   @Test
   public void testHasBucketOwnerConditionWithExpectedSourceBucketOwnerPresent() {
-    HttpHeaders headers = mock(HttpHeaders.class);
     when(headers.getHeaderString(S3Consts.EXPECTED_BUCKET_OWNER_HEADER)).thenReturn(null);
     when(headers.getHeaderString(S3Consts.EXPECTED_SOURCE_BUCKET_OWNER_HEADER)).thenReturn("owner2");
     assertThat(S3Owner.hasBucketOwnerCondition(headers)).isTrue();
@@ -81,7 +78,6 @@ public class TestS3Owner {
 
   @Test
   public void testHasBucketOwnerConditionWithBothPresent() {
-    HttpHeaders headers = mock(HttpHeaders.class);
     when(headers.getHeaderString(S3Consts.EXPECTED_BUCKET_OWNER_HEADER)).thenReturn("owner1");
     when(headers.getHeaderString(S3Consts.EXPECTED_SOURCE_BUCKET_OWNER_HEADER)).thenReturn("owner2");
     assertThat(S3Owner.hasBucketOwnerCondition(headers)).isTrue();
