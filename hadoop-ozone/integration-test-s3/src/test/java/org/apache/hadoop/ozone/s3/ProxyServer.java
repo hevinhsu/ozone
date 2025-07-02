@@ -36,6 +36,10 @@ import org.apache.commons.lang3.StringUtils;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+/**
+ * ProxyServer acts as a reverse proxy for S3G endpoints.
+ * It forwards requests to the selected S3G endpoint based on the load balancing strategy.
+ */
 public class ProxyServer {
   private static final Logger LOG = LoggerFactory.getLogger(ProxyServer.class);
   private final List<String> s3gEndpoints;

@@ -26,6 +26,7 @@ import org.apache.hadoop.ozone.MiniOzoneCluster;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+/** Multi S3 Gateway for {@link MiniOzoneCluster}. */
 public class MultiS3GatewayService implements MiniOzoneCluster.Service {
 
   private static final Logger LOG = LoggerFactory.getLogger(MultiS3GatewayService.class);
@@ -53,25 +54,8 @@ public class MultiS3GatewayService implements MiniOzoneCluster.Service {
     this.conf = new OzoneConfiguration(conf);
     this.conf.set(S3GatewayConfigKeys.OZONE_S3G_HTTP_ADDRESS_KEY, localhostWithFreePort());
     String url = this.conf.get(S3GatewayConfigKeys.OZONE_S3G_HTTP_ADDRESS_KEY);
-
-    // Parse host and port with proper error handling
     String[] parts = url.split(":");
-    if (parts.length != 2) {
-      throw new IllegalArgumentException("Invalid S3G HTTP address format: " + url);
-    }
-
-    String host = parts[0];
-    int port;
-    try {
-      port = Integer.parseInt(parts[1]);
-      if (port <= 0 || port > 65535) {
-        throw new IllegalArgumentException("Invalid port number: " + port);
-      }
-    } catch (NumberFormatException e) {
-      throw new IllegalArgumentException("Invalid port format in address: " + url, e);
-    }
-
-    proxyServer = new ProxyServer(urls, host, port);
+    proxyServer = new ProxyServer(urls, parts[0], Integer.parseInt(parts[1]));
     proxyServer.start();
   }
 
@@ -79,7 +63,6 @@ public class MultiS3GatewayService implements MiniOzoneCluster.Service {
   public void stop() throws Exception {
     Exception lastException = null;
 
-    // Stop proxy server first
     if (proxyServer != null) {
       try {
         proxyServer.stop();
@@ -89,7 +72,6 @@ public class MultiS3GatewayService implements MiniOzoneCluster.Service {
       }
     }
 
-    // Stop all gateway services
     for (S3GatewayService service : gatewayServices) {
       try {
         service.stop();
@@ -108,13 +90,4 @@ public class MultiS3GatewayService implements MiniOzoneCluster.Service {
     return conf;
   }
 
-
-  private void configureS3G(OzoneConfiguration conf) {
-    OzoneConfigurationHolder.resetConfiguration();
-
-    conf.set(S3GatewayConfigKeys.OZONE_S3G_HTTP_ADDRESS_KEY, localhostWithFreePort());
-    conf.set(S3GatewayConfigKeys.OZONE_S3G_HTTPS_ADDRESS_KEY, localhostWithFreePort());
-
-    OzoneConfigurationHolder.setConfiguration(conf);
-  }
 }
