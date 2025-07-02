@@ -31,7 +31,6 @@ import java.util.List;
 import java.util.Optional;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
-import org.apache.commons.collections.CollectionUtils;
 import org.apache.commons.io.IOUtils;
 import org.apache.commons.lang3.StringUtils;
 import org.slf4j.Logger;
@@ -209,7 +208,7 @@ public class ProxyServer {
         }
 
         List<String> headerValues = exchange.getRequestHeaders().get(headerName);
-        if (CollectionUtils.isEmpty(headerValues)) {
+        if (headerValues == null || headerValues.isEmpty()) {
           continue;
         }
 
