@@ -33,8 +33,7 @@ public class MultiS3GatewayService implements MiniOzoneCluster.Service {
 
   private final List<S3GatewayService> gatewayServices = new ArrayList<>();
   private ProxyServer proxyServer;
-  private OzoneConfiguration conf;
-
+  private OzoneConfiguration configuration;
 
   public MultiS3GatewayService(int numGateways) {
     for (int i = 0; i < numGateways; i++) {
@@ -51,9 +50,9 @@ public class MultiS3GatewayService implements MiniOzoneCluster.Service {
       urls.add(redirectUrl);
     }
 
-    this.conf = new OzoneConfiguration(conf);
-    this.conf.set(S3GatewayConfigKeys.OZONE_S3G_HTTP_ADDRESS_KEY, localhostWithFreePort());
-    String url = this.conf.get(S3GatewayConfigKeys.OZONE_S3G_HTTP_ADDRESS_KEY);
+    configuration = new OzoneConfiguration(conf);
+    configuration.set(S3GatewayConfigKeys.OZONE_S3G_HTTP_ADDRESS_KEY, localhostWithFreePort());
+    String url = configuration.get(S3GatewayConfigKeys.OZONE_S3G_HTTP_ADDRESS_KEY);
     String[] parts = url.split(":");
     proxyServer = new ProxyServer(urls, parts[0], Integer.parseInt(parts[1]));
     proxyServer.start();
@@ -86,8 +85,8 @@ public class MultiS3GatewayService implements MiniOzoneCluster.Service {
     }
   }
 
-  public OzoneConfiguration getConf() {
-    return conf;
+  public OzoneConfiguration getConfiguration() {
+    return configuration;
   }
 
 }
