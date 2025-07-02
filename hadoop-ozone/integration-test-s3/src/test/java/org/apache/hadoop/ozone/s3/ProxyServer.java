@@ -10,6 +10,7 @@ import java.net.HttpURLConnection;
 import java.net.InetSocketAddress;
 import java.net.URL;
 import java.util.List;
+import java.util.Optional;
 import java.util.concurrent.atomic.AtomicInteger;
 import org.apache.commons.io.IOUtils;
 import org.slf4j.Logger;
@@ -52,45 +53,35 @@ public class ProxyServer {
         System.out.println();
         System.out.println();
         System.out.println();
-        LOG.info("Received request and forwarding request to {}", target);
-        HttpURLConnection conn = (HttpURLConnection) new URL(target).openConnection();
-        String requestMethod = exchange.getRequestMethod();
-        conn.setRequestMethod(requestMethod);
 
-        copyHeaders(exchange, conn);
+        HttpURLConnection conn = createConnection(exchange, target);
+        String requestMethod = conn.getRequestMethod();
 
-        // 複製 request body 並設置 Content-Length
+        LOG.info("Received request and forwarding request to [{}] {}", requestMethod, target);
+        LOG.info("Request headers:");
+        exchange.getRequestHeaders().forEach((key, value) -> {
+          LOG.info("  {} : {}", key, value);
+        });
+
+        copyRequestHeaders(exchange, conn);
+
         copyRequestBody(exchange, conn);
 
         int responseCode = conn.getResponseCode();
 
-        // copy response headers
-        for (String headerName : conn.getHeaderFields().keySet()) {
-          if (headerName != null && !isHopByHopHeader(headerName)) {
-            List<String> headerValues = conn.getHeaderFields().get(headerName);
-            for (String headerValue : headerValues) {
-              exchange.getResponseHeaders().add(headerName, headerValue);
-            }
-          }
+        copyResponseHeaders(exchange, conn);
+
+        if(requestMethod.equals("HEAD") || responseCode == HttpURLConnection.HTTP_NO_CONTENT) {
+          exchange.sendResponseHeaders(responseCode, -1);
+          conn.disconnect();
+          return;
         }
 
-        exchange.sendResponseHeaders(responseCode, conn.getContentLengthLong());
+        copyResponseBody(exchange, conn, responseCode);
 
-        try (InputStream is = responseCode >= 400 ? conn.getErrorStream() : conn.getInputStream();
-             OutputStream os = exchange.getResponseBody()) {
-          if (is != null) {
-            transferTo(is, os);
-          }
-        }
-
-        conn.disconnect();
-        if (responseCode >= 400) {
-          LOG.error("Forwarded request to [{}] {} with response code {}", requestMethod, target, responseCode);
-        } else {
-          LOG.info("Forwarded request to [{}] {} with response code {}", requestMethod, target, responseCode);
-        }
       } catch (Exception e) {
         LOG.error("Error forwarding request to S3G endpoint", e);
+        exchange.sendResponseHeaders(502, 0);
         throw new IOException("Failed to forward request", e);
       } finally {
         exchange.close();
@@ -102,56 +93,63 @@ public class ProxyServer {
       }
     }
 
-    private void copyRequestBody(HttpExchange exchange, HttpURLConnection conn) throws IOException {
-      byte[] bodyBytes = IOUtils.toByteArray(exchange.getRequestBody());
-      conn.setRequestProperty("Content-Length", String.valueOf(bodyBytes.length));
-      LOG.info("write Content-Length to header: {}" , bodyBytes.length);
-      if (bodyBytes.length > 0) {
-        conn.setDoOutput(true);
-        try (OutputStream os = conn.getOutputStream()) {
-          os.write(bodyBytes);
+    private void copyResponseBody(HttpExchange exchange, HttpURLConnection conn, int responseCode) throws IOException {
+      Integer responseContentLength = Optional.ofNullable(conn.getHeaderField("Content-Length"))
+          .map(Integer::parseInt)
+          .orElse(0);
+      exchange.sendResponseHeaders(responseCode, responseContentLength);
+
+      try (InputStream is = responseCode >= 400 ? conn.getErrorStream() : conn.getInputStream();
+           OutputStream os = exchange.getResponseBody()) {
+        if (is != null) {
+          IOUtils.copy(is, os);
         }
       }
     }
 
-    private void copyHeaders(HttpExchange exchange, HttpURLConnection conn) {
-      for (String headerName : exchange.getRequestHeaders().keySet()) {
-        if (!isHopByHopHeader(headerName)) {
-          List<String> headerValues = exchange.getRequestHeaders().get(headerName);
-          System.out.println();
-          System.out.println();
-          LOG.info("try to copy Header {} = {} to target header", headerName, headerValues);
-          if (headerValues != null && !headerValues.isEmpty()) {
-            String joined = String.join(",", headerValues);
-            conn.setRequestProperty(headerName, joined);
-            LOG.info("check [{}] after copy Header. expected: {}, actual: {}", headerName, headerValues, conn.getRequestProperty(headerName));
+    private void copyResponseHeaders(HttpExchange exchange, HttpURLConnection conn) {
+      // copy response headers
+      for (String headerName : conn.getHeaderFields().keySet()) {
+        if (headerName != null && !isHopByHopHeader(headerName)) {
+          List<String> headerValues = conn.getHeaderFields().get(headerName);
+          for (String headerValue : headerValues) {
+            exchange.getResponseHeaders().add(headerName, headerValue);
           }
         }
       }
+    }
 
+    private HttpURLConnection createConnection(HttpExchange exchange, String target) throws IOException {
+      HttpURLConnection conn = (HttpURLConnection) new URL(target).openConnection();
+      String requestMethod = exchange.getRequestMethod();
+      conn.setRequestMethod(requestMethod);
+      return conn;
+    }
 
-      if (exchange.getRequestHeaders().size() != conn.getRequestProperties().size()) {
-        LOG.info("\u001B[33m before header size: {}, after header size: {} \u001B[0m",
-            exchange.getRequestHeaders().size(), conn.getRequestProperties().size());
-
-        StringBuilder diff = new StringBuilder();
-        diff.append("Request headers not matching after forwarding. Diff:\n");
-        for (String header : exchange.getRequestHeaders().keySet()) {
-          if (!conn.getRequestProperties().containsKey(header) ) {
-            if (isHopByHopHeader(header)) {
-              diff.append("[Hop-by-hop header] ");
-            }
-            diff.append("Missing in conn: ").append(header).append(" values: ")
-                .append(exchange.getRequestHeaders().get(header)).append("\n");
-          }
+    private void copyRequestBody(HttpExchange exchange, HttpURLConnection conn) throws IOException {
+      List<String> contentLengths = exchange.getRequestHeaders().get("Content-Length");
+      if (contentLengths != null) {
+        conn.setFixedLengthStreamingMode(Integer.parseInt(contentLengths.get(0)));
+        conn.setDoOutput(true);
+        try (OutputStream os = conn.getOutputStream()) {
+          IOUtils.copy(exchange.getRequestBody(), os);
         }
-        for (String header : conn.getRequestProperties().keySet()) {
-          if (!exchange.getRequestHeaders().containsKey(header)) {
-            diff.append("Added in conn: ").append(header).append(" values: ")
-                .append(conn.getRequestProperties().get(header)).append("\n");
-          }
+      }
+    }
+
+    private void copyRequestHeaders(HttpExchange exchange, HttpURLConnection conn) {
+      for (String headerName : exchange.getRequestHeaders().keySet()) {
+        if (isHopByHopHeader(headerName)) {
+          continue;
         }
-        LOG.info(diff.toString());
+
+        List<String> headerValues = exchange.getRequestHeaders().get(headerName);
+        if (headerValues != null && !headerValues.isEmpty()) {
+          String joined = String.join(",", headerValues);
+          // httpServer will convert first character to upper case.
+          // so we convert header name to small case to avoid header name mismatch in s3g
+          conn.setRequestProperty(headerName.toLowerCase(), joined);
+        }
       }
     }
   }
@@ -159,14 +157,6 @@ public class ProxyServer {
   private String getNextEndpoint() {
     int idx = counter.getAndUpdate(i -> (i + 1) % s3gEndpoints.size());
     return s3gEndpoints.get(idx);
-  }
-
-  public void transferTo(InputStream in, OutputStream out) throws IOException {
-    byte[] buffer = new byte[8192];
-    int read;
-    while ((read = in.read(buffer)) != -1) {
-      out.write(buffer, 0, read);
-    }
   }
 
   private boolean isHopByHopHeader(String header) {
