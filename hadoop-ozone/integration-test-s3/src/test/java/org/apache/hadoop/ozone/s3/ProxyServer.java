@@ -26,6 +26,7 @@ import java.io.OutputStream;
 import java.net.HttpURLConnection;
 import java.net.InetSocketAddress;
 import java.net.URL;
+import java.nio.charset.StandardCharsets;
 import java.util.List;
 import java.util.Optional;
 import java.util.concurrent.ExecutorService;
@@ -123,7 +124,7 @@ public class ProxyServer {
       try {
         exchange.sendResponseHeaders(502, 0);
         try (OutputStream os = exchange.getResponseBody()) {
-          os.write(("Proxy error: " + e.getMessage()).getBytes());
+          os.write(("Proxy error: " + e.getMessage()).getBytes(StandardCharsets.UTF_8));
         }
       } catch (IOException ioException) {
         LOG.error("Failed to send error response", ioException);
