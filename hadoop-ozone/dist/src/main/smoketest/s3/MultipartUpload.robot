@@ -387,9 +387,7 @@ Check Bucket Ownership Verification
 
     # 3. upload-part-copy
     ${result}=    Execute AWSS3APICli                                              put-object --bucket ${BUCKET} --key ${PREFIX}/mpu/source --body /tmp/part2
-    Execute AWSS3APICli and failed bucket ownership verification                   upload-part-copy --bucket ${BUCKET} --key ${PREFIX}/mpu/key1 --upload-id ${uploadID} --part-number 2 --copy-source ${BUCKET}/${PREFIX}/mpu/source  ${correct_owner}  wrong-owner
-    Execute AWSS3APICli and failed bucket ownership verification                   upload-part-copy --bucket ${BUCKET} --key ${PREFIX}/mpu/key1 --upload-id ${uploadID} --part-number 2 --copy-source ${BUCKET}/${PREFIX}/mpu/source  wrong-owner       ${correct_owner}
-    ${ETag2} =  Execute AWSS3APICli using bucket ownership verification            upload-part-copy --bucket ${BUCKET} --key ${PREFIX}/mpu/key1 --upload-id ${uploadID} --part-number 2 --copy-source ${BUCKET}/${PREFIX}/mpu/source  ${correct_owner}  ${correct_owner}
+    ${ETag2} =  Execute AWSS3APICli with bucket owner check                        upload-part-copy --bucket ${BUCKET} --key ${PREFIX}/mpu/key1 --upload-id ${uploadID} --part-number 2 --copy-source ${BUCKET}/${PREFIX}/mpu/source  ${correct_owner}  ${correct_owner}
     ${ETag2} =  Execute and checkrc                                                echo '${ETag2}' | jq -r '.CopyPartResult.ETag'    0
 
     # 4. list-multipart-uploads
