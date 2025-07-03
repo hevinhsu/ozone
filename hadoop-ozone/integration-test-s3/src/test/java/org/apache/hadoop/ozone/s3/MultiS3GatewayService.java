@@ -19,6 +19,7 @@ package org.apache.hadoop.ozone.s3;
 
 import static org.apache.ozone.test.GenericTestUtils.PortAllocator.localhostWithFreePort;
 
+import java.net.URI;
 import java.util.ArrayList;
 import java.util.List;
 import org.apache.hadoop.hdds.conf.OzoneConfiguration;
@@ -26,7 +27,9 @@ import org.apache.hadoop.ozone.MiniOzoneCluster;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-/** Multi S3 Gateway for {@link MiniOzoneCluster}. */
+/**
+ * Multi S3 Gateway for {@link MiniOzoneCluster}.
+ */
 public class MultiS3GatewayService implements MiniOzoneCluster.Service {
 
   private static final Logger LOG = LoggerFactory.getLogger(MultiS3GatewayService.class);
@@ -53,21 +56,21 @@ public class MultiS3GatewayService implements MiniOzoneCluster.Service {
     configuration = new OzoneConfiguration(conf);
     configuration.set(S3GatewayConfigKeys.OZONE_S3G_HTTP_ADDRESS_KEY, localhostWithFreePort());
     String url = configuration.get(S3GatewayConfigKeys.OZONE_S3G_HTTP_ADDRESS_KEY);
-    String[] parts = url.split(":");
-    proxyServer = new ProxyServer(urls, parts[0], Integer.parseInt(parts[1]));
+    URI proxyUri = new URI("http://" + url);
+    proxyServer = new ProxyServer(urls, proxyUri.getHost(), proxyUri.getPort());
     proxyServer.start();
   }
 
   @Override
   public void stop() throws Exception {
-    Exception lastException = null;
+    Exception exception = null;
 
     if (proxyServer != null) {
       try {
         proxyServer.stop();
       } catch (Exception e) {
         LOG.warn("Error stopping proxy server", e);
-        lastException = e;
+        exception = e;
       }
     }
 
@@ -76,12 +79,16 @@ public class MultiS3GatewayService implements MiniOzoneCluster.Service {
         service.stop();
       } catch (Exception e) {
         LOG.warn("Error stopping S3 gateway service", e);
-        lastException = e;
+        if (exception == null) {
+          exception = e;
+        } else {
+          exception.addSuppressed(e);
+        }
       }
     }
 
-    if (lastException != null) {
-      throw lastException;
+    if (exception != null) {
+      throw exception;
     }
   }
 

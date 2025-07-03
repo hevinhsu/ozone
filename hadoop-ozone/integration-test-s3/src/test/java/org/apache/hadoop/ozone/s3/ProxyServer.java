@@ -53,6 +53,9 @@ public class ProxyServer {
   private static final int CONNECT_TIMEOUT_MS = 60000; // 60 seconds
   private static final int READ_TIMEOUT_MS = 300000;   // 5 minutes
 
+  private static final int BUFFER_SIZE = 64 * 1024; // 64KB
+  private static final ThreadLocal<byte[]> IO_BUFFER = ThreadLocal.withInitial(() -> new byte[BUFFER_SIZE]);
+
   public ProxyServer(List<String> s3gEndpoints, String host, int proxyPort) throws Exception {
     this(s3gEndpoints, host, proxyPort, new RoundRobinStrategy());
   }
@@ -157,14 +160,14 @@ public class ProxyServer {
       if (transferEncoding != null && transferEncoding.equalsIgnoreCase("chunked")) {
         exchange.sendResponseHeaders(responseCode, 0);
       } else {
-        long contentLength = Optional.of(contentLengthStr).map(Long::parseLong).orElse(0L);
+        long contentLength = Optional.ofNullable(contentLengthStr).map(Long::parseLong).orElse(0L);
         exchange.sendResponseHeaders(responseCode, contentLength);
       }
 
       try (InputStream is = responseCode >= 400 ? conn.getErrorStream() : conn.getInputStream();
            OutputStream os = exchange.getResponseBody()) {
         if (is != null) {
-          IOUtils.copyLarge(is, os, new byte[64 * 1024]);
+          IOUtils.copyLarge(is, os, IO_BUFFER.get());
           os.flush();
         }
       }
@@ -185,7 +188,7 @@ public class ProxyServer {
         String contentLength = exchange.getRequestHeaders().getFirst("Content-Length");
         conn.setDoOutput(true);
         if (StringUtils.isNotBlank(contentLength)) {
-          conn.setFixedLengthStreamingMode(Integer.parseInt(contentLength));
+          conn.setFixedLengthStreamingMode(Long.parseLong(contentLength));
         } else {
           conn.setChunkedStreamingMode(0);
         }
