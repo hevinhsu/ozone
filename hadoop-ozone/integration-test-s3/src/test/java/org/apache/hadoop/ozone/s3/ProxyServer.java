@@ -83,6 +83,14 @@ public class ProxyServer {
     LOG.info("Proxy stopped on http://{}:{}", host, port);
   }
 
+  /**
+   * ProxyHandler is a subclass of Jetty's ProxyServlet.Transparent.
+   * It implements logic for request rewriting, service handling,
+   * proxy response failure, and rewrite failure handling.
+   * This handler is mainly used to forward requests to different S3G endpoints
+   * based on the load balancing strategy, handle special HTTP headers (such as Expect),
+   * and manage exceptions during the proxy process.
+   */
   public class ProxyHandler extends ProxyServlet.Transparent {
 
     @Override
@@ -118,15 +126,14 @@ public class ProxyServer {
       return finalUrl;
     }
 
-
     @Override
     protected void service(HttpServletRequest request, HttpServletResponse response)
         throws ServletException, IOException {
 
       // Remove the Expect header to avoid Jetty's 100-continue handling issue:
       // In some scenarios (e.g. testPutObjectEmpty), when content-length != 0, Jetty triggers the 100-continue process,
-      // causing the server to wait for a 100 response code. However, Jetty only sends the 100 response when the InputStream is read,
-      // which can lead to request failures.
+      // causing the server to wait for a 100 response code. However, Jetty only sends the 100 response
+      // when the InputStream is read, which can lead to request failures.
       if (request.getHeader("Expect") != null) {
         LOG.info("Removing Expect header: {}", request.getHeader("Expect"));
 
