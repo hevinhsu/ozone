@@ -1404,12 +1404,6 @@
         <groupId>org.eclipse.jetty</groupId>
         <artifactId>jetty-server</artifactId>
         <version>${jetty.version}</version>
-<!--        <exclusions>-->
-<!--          <exclusion>-->
-<!--            <groupId>org.eclipse.jetty</groupId>-->
-<!--            <artifactId>javax.servlet-api</artifactId>-->
-<!--          </exclusion>-->
-<!--        </exclusions>-->
       </dependency>
       <dependency>
         <groupId>org.eclipse.jetty</groupId>
