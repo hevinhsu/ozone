@@ -118,7 +118,7 @@ public class ProxyServer {
         targetUrl.append(requestUri);
       }
       if (queryString != null) {
-        targetUrl.append("?").append(queryString);
+        targetUrl.append('?').append(queryString);
       }
 
       String finalUrl = targetUrl.toString();
