@@ -21,8 +21,10 @@ import static org.apache.ozone.test.GenericTestUtils.PortAllocator.localhostWith
 import static org.assertj.core.api.Assertions.assertThat;
 
 import java.io.IOException;
+import java.io.InputStream;
 import java.net.HttpURLConnection;
 import java.net.URL;
+import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Scanner;
@@ -40,8 +42,8 @@ public class ProxyServerIntegrationTest {
   private static final int NUM_SERVERS = 3;
   private static final String SERVICE_PATH = "/service-name";
 
-  private static final List<Server> servers = new ArrayList<>();
-  private static final List<String> endpoints = new ArrayList<>();
+  private static final List<Server> SERVERS = new ArrayList<>();
+  private static final List<String> ENDPOINTS = new ArrayList<>();
   private static ProxyServer proxy;
   private static String proxyUrl;
 
@@ -59,7 +61,7 @@ public class ProxyServerIntegrationTest {
     if (proxy != null) {
       proxy.stop();
     }
-    for (Server server : servers) {
+    for (Server server : SERVERS) {
       server.stop();
     }
   }
@@ -75,14 +77,14 @@ public class ProxyServerIntegrationTest {
     server.setHandler(context);
     server.start();
 
-    servers.add(server);
-    endpoints.add("http://" + address);
+    SERVERS.add(server);
+    ENDPOINTS.add("http://" + address);
   }
 
   private static void startProxy() throws Exception {
     String address = localhostWithFreePort();
     String[] hostPort = address.split(":");
-    proxy = new ProxyServer(endpoints, hostPort[0], Integer.parseInt(hostPort[1]));
+    proxy = new ProxyServer(ENDPOINTS, hostPort[0], Integer.parseInt(hostPort[1]));
     proxy.start();
     proxyUrl = "http://" + address + SERVICE_PATH;
   }
@@ -97,8 +99,8 @@ public class ProxyServerIntegrationTest {
 
   @Test
   public void testDirectAccess() throws IOException {
-    for (int i = 0; i < endpoints.size(); i++) {
-      String response = sendRequest(endpoints.get(i) + SERVICE_PATH);
+    for (int i = 0; i < ENDPOINTS.size(); i++) {
+      String response = sendRequest(ENDPOINTS.get(i) + SERVICE_PATH);
       assertThat(response).isEqualTo("server-" + i);
     }
   }
@@ -113,8 +115,9 @@ public class ProxyServerIntegrationTest {
       throw new IOException("HTTP " + conn.getResponseCode() + " from " + url);
     }
 
-    try (Scanner scanner = new Scanner(conn.getInputStream())) {
-      return scanner.useDelimiter("\\A").next();
+    try (InputStream is = conn.getInputStream();
+         Scanner scanner = new Scanner(is, StandardCharsets.UTF_8.name())) {
+      return scanner.useDelimiter("\\A").hasNext() ? scanner.next() : "";
     }
   }
 
