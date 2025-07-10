@@ -38,6 +38,10 @@ import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.Test;
 
+/**
+ * Integration test class to verify the routing and direct access functionality
+ * of the ProxyServer.
+ */
 public class ProxyServerIntegrationTest {
   private static final int NUM_SERVERS = 3;
   private static final String SERVICE_PATH = "/service-name";
@@ -121,6 +125,9 @@ public class ProxyServerIntegrationTest {
     }
   }
 
+  /**
+   * A simple servlet that returns the name of the server.
+   */
   public static class ServiceServlet extends HttpServlet {
     private final String name;
 
