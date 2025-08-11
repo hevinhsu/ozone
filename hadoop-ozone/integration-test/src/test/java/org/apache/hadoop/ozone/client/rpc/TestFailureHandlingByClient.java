@@ -93,7 +93,7 @@ public class TestFailureHandlingByClient {
   private static String volumeName;
   private static String bucketName;
   private static String keyString;
-  private static final List<DatanodeDetails> restartDataNodes = new ArrayList<>();
+  private static final List<DatanodeDetails> RESTART_DATA_NODES = new ArrayList<>();
 
   /**
    * Create a MiniDFSCluster for testing.
@@ -159,13 +159,13 @@ public class TestFailureHandlingByClient {
 
   @BeforeEach
   public void restartDownDataNodes() throws IOException, InterruptedException, TimeoutException {
-    if (restartDataNodes.isEmpty()) {
+    if (RESTART_DATA_NODES.isEmpty()) {
       return;
     }
-    for (DatanodeDetails dataNode : restartDataNodes) {
+    for (DatanodeDetails dataNode : RESTART_DATA_NODES) {
       cluster.restartHddsDatanode(dataNode, false);
     }
-    restartDataNodes.clear();
+    RESTART_DATA_NODES.clear();
     cluster.waitForClusterToBeReady();
   }
 
@@ -208,8 +208,8 @@ public class TestFailureHandlingByClient {
     List<DatanodeDetails> datanodes = pipeline.getNodes();
     cluster.shutdownHddsDatanode(datanodes.get(0));
     cluster.shutdownHddsDatanode(datanodes.get(1));
-    restartDataNodes.add(datanodes.get(0));
-    restartDataNodes.add(datanodes.get(1));
+    RESTART_DATA_NODES.add(datanodes.get(0));
+    RESTART_DATA_NODES.add(datanodes.get(1));
     // The write will fail but exception will be handled and length will be
     // updated correctly in OzoneManager once the steam is closed
     key.close();
@@ -275,7 +275,7 @@ public class TestFailureHandlingByClient {
 
 
     int block2ExpectedChunkCount;
-    if (locationList.get(0).getLength() == 2 * chunkSize) {
+    if (locationList.get(0).getLength() == 2L * chunkSize) {
       // Scenario 1
       block2ExpectedChunkCount = 1;
     } else {
@@ -301,9 +301,9 @@ public class TestFailureHandlingByClient {
       int block1NumChunks = blockData1.getChunks().size();
       assertThat(block1NumChunks).isGreaterThanOrEqualTo(1);
 
-      assertEquals(chunkSize * block1NumChunks, blockData1.getSize());
+      assertEquals((long) chunkSize * block1NumChunks, blockData1.getSize());
       assertEquals(1, containerData1.getBlockCount());
-      assertEquals(chunkSize * block1NumChunks, containerData1.getBytesUsed());
+      assertEquals((long) chunkSize * block1NumChunks, containerData1.getBytesUsed());
     }
 
     // Verify that the second block has the remaining 0.5*chunkSize of data
@@ -355,8 +355,8 @@ public class TestFailureHandlingByClient {
 
     cluster.shutdownHddsDatanode(datanodes.get(0));
     cluster.shutdownHddsDatanode(datanodes.get(1));
-    restartDataNodes.add(datanodes.get(0));
-    restartDataNodes.add(datanodes.get(1));
+    RESTART_DATA_NODES.add(datanodes.get(0));
+    RESTART_DATA_NODES.add(datanodes.get(1));
     key.close();
     // this will throw AlreadyClosedException and and current stream
     // will be discarded and write a new block
@@ -426,7 +426,7 @@ public class TestFailureHandlingByClient {
     assertNotEquals(
         keyInfo.getLatestVersionLocations().getBlocksLatestVersionOnly().get(0)
             .getBlockID(), blockId);
-    assertEquals(2 * data.getBytes(UTF_8).length, keyInfo.getDataSize());
+    assertEquals(2L * data.getBytes(UTF_8).length, keyInfo.getDataSize());
     validateData(keyName, data.concat(data).getBytes(UTF_8));
   }
 
@@ -471,7 +471,7 @@ public class TestFailureHandlingByClient {
     // shutdown 1 datanode. This will make sure the 2 way commit happens for
     // next write ops.
     cluster.shutdownHddsDatanode(datanodes.get(0));
-    restartDataNodes.add(datanodes.get(0));
+    RESTART_DATA_NODES.add(datanodes.get(0));
 
     key.write(data.getBytes(UTF_8));
     key.write(data.getBytes(UTF_8));
@@ -497,9 +497,10 @@ public class TestFailureHandlingByClient {
     assertNotEquals(
         keyInfo.getLatestVersionLocations().getBlocksLatestVersionOnly().get(0)
             .getBlockID(), blockId);
-    assertEquals(3 * data.getBytes(UTF_8).length, keyInfo.getDataSize());
+    assertEquals(3L * data.getBytes(UTF_8).length, keyInfo.getDataSize());
     TestHelper
-        .validateData(keyName, data.concat(data).concat(data).getBytes(UTF_8), localObjectStore, volumeName, bucketName);
+        .validateData(keyName, data.concat(data).concat(data).getBytes(UTF_8),
+            localObjectStore, volumeName, bucketName);
     IOUtils.closeQuietly(localClient);
   }
 
@@ -535,8 +536,8 @@ public class TestFailureHandlingByClient {
     // will be added in the exclude list
     cluster.shutdownHddsDatanode(datanodes.get(0));
     cluster.shutdownHddsDatanode(datanodes.get(1));
-    restartDataNodes.add(datanodes.get(0));
-    restartDataNodes.add(datanodes.get(1));
+    RESTART_DATA_NODES.add(datanodes.get(0));
+    RESTART_DATA_NODES.add(datanodes.get(1));
 
     key.write(data.getBytes(UTF_8));
     key.write(data.getBytes(UTF_8));
@@ -559,7 +560,7 @@ public class TestFailureHandlingByClient {
     assertNotEquals(
         keyInfo.getLatestVersionLocations().getBlocksLatestVersionOnly().get(0)
             .getBlockID(), blockId);
-    assertEquals(3 * data.getBytes(UTF_8).length, keyInfo.getDataSize());
+    assertEquals(3L * data.getBytes(UTF_8).length, keyInfo.getDataSize());
     validateData(keyName, data.concat(data).concat(data).getBytes(UTF_8));
   }
 
