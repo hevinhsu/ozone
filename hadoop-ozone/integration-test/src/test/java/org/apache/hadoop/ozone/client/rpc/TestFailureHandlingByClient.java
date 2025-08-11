@@ -33,6 +33,7 @@ import java.util.Collections;
 import java.util.List;
 import java.util.UUID;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.TimeoutException;
 import org.apache.hadoop.hdds.HddsUtils;
 import org.apache.hadoop.hdds.client.BlockID;
 import org.apache.hadoop.hdds.client.RatisReplicationConfig;
@@ -53,6 +54,7 @@ import org.apache.hadoop.net.StaticMapping;
 import org.apache.hadoop.ozone.MiniOzoneCluster;
 import org.apache.hadoop.ozone.OzoneConfigKeys;
 import org.apache.hadoop.ozone.OzoneConsts;
+import org.apache.hadoop.ozone.OzoneTestUtils;
 import org.apache.hadoop.ozone.client.ObjectStore;
 import org.apache.hadoop.ozone.client.OzoneClient;
 import org.apache.hadoop.ozone.client.OzoneClientFactory;
@@ -70,7 +72,9 @@ import org.apache.hadoop.ozone.om.helpers.OmKeyArgs;
 import org.apache.hadoop.ozone.om.helpers.OmKeyInfo;
 import org.apache.hadoop.ozone.om.helpers.OmKeyLocationInfo;
 import org.apache.ratis.proto.RaftProtos;
-import org.junit.jupiter.api.AfterEach;
+import org.junit.jupiter.api.AfterAll;
+import org.junit.jupiter.api.BeforeAll;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.EnumSource;
@@ -80,16 +84,16 @@ import org.junit.jupiter.params.provider.EnumSource;
  */
 public class TestFailureHandlingByClient {
 
-  private MiniOzoneCluster cluster;
-  private OzoneConfiguration conf;
-  private OzoneClient client;
-  private ObjectStore objectStore;
-  private int chunkSize;
-  private int blockSize;
-  private String volumeName;
-  private String bucketName;
-  private String keyString;
-  private RaftProtos.ReplicationLevel watchType;
+  private static MiniOzoneCluster cluster;
+  private static OzoneConfiguration conf;
+  private static OzoneClient client;
+  private static ObjectStore objectStore;
+  private static int chunkSize;
+  private static int blockSize;
+  private static String volumeName;
+  private static String bucketName;
+  private static String keyString;
+  private static final List<DatanodeDetails> restartDataNodes = new ArrayList<>();
 
   /**
    * Create a MiniDFSCluster for testing.
@@ -98,7 +102,8 @@ public class TestFailureHandlingByClient {
    *
    * @throws IOException
    */
-  private void init() throws Exception {
+  @BeforeAll
+  public static void init() throws Exception {
     conf = new OzoneConfiguration();
     chunkSize = (int) OzoneConsts.MB;
     blockSize = 4 * chunkSize;
@@ -108,9 +113,6 @@ public class TestFailureHandlingByClient {
         conf.getObject(RatisClientConfig.class);
     ratisClientConfig.setWriteRequestTimeout(Duration.ofSeconds(30));
     ratisClientConfig.setWatchRequestTimeout(Duration.ofSeconds(30));
-    if (watchType != null) {
-      ratisClientConfig.setWatchType(watchType.toString());
-    }
     conf.setFromObject(ratisClientConfig);
 
     conf.setTimeDuration(
@@ -155,15 +157,23 @@ public class TestFailureHandlingByClient {
     objectStore.getVolume(volumeName).createBucket(bucketName);
   }
 
-  private void startCluster() throws Exception {
-    init();
+  @BeforeEach
+  public void restartDownDataNodes() throws IOException, InterruptedException, TimeoutException {
+    if (restartDataNodes.isEmpty()) {
+      return;
+    }
+    for (DatanodeDetails dataNode : restartDataNodes) {
+      cluster.restartHddsDatanode(dataNode, false);
+    }
+    restartDataNodes.clear();
+    cluster.waitForClusterToBeReady();
   }
 
   /**
    * Shutdown MiniDFSCluster.
    */
-  @AfterEach
-  public void shutdown() {
+  @AfterAll
+  public static void shutdown() {
     IOUtils.closeQuietly(client);
     if (cluster != null) {
       cluster.shutdown();
@@ -172,7 +182,7 @@ public class TestFailureHandlingByClient {
 
   @Test
   public void testBlockWritesWithDnFailures() throws Exception {
-    startCluster();
+    resetContainers();
     String keyName = UUID.randomUUID().toString();
     OzoneOutputStream key = createKey(keyName, ReplicationType.RATIS, 0);
     byte[] data = ContainerTestHelper.getFixedLengthString(
@@ -198,6 +208,8 @@ public class TestFailureHandlingByClient {
     List<DatanodeDetails> datanodes = pipeline.getNodes();
     cluster.shutdownHddsDatanode(datanodes.get(0));
     cluster.shutdownHddsDatanode(datanodes.get(1));
+    restartDataNodes.add(datanodes.get(0));
+    restartDataNodes.add(datanodes.get(1));
     // The write will fail but exception will be handled and length will be
     // updated correctly in OzoneManager once the steam is closed
     key.close();
@@ -215,6 +227,11 @@ public class TestFailureHandlingByClient {
     // Verify that the block information is updated correctly in the DB on
     // failures
     testBlockCountOnFailures(keyInfo);
+  }
+
+  private void resetContainers() {
+    OzoneTestUtils.closeAllContainers(cluster.getStorageContainerManager().getEventQueue(),
+        cluster.getStorageContainerManager());
   }
 
   /**
@@ -315,7 +332,6 @@ public class TestFailureHandlingByClient {
 
   @Test
   public void testWriteSmallFile() throws Exception {
-    startCluster();
     String keyName = UUID.randomUUID().toString();
     OzoneOutputStream key =
         createKey(keyName, ReplicationType.RATIS, 0);
@@ -339,6 +355,8 @@ public class TestFailureHandlingByClient {
 
     cluster.shutdownHddsDatanode(datanodes.get(0));
     cluster.shutdownHddsDatanode(datanodes.get(1));
+    restartDataNodes.add(datanodes.get(0));
+    restartDataNodes.add(datanodes.get(1));
     key.close();
     // this will throw AlreadyClosedException and and current stream
     // will be discarded and write a new block
@@ -360,7 +378,6 @@ public class TestFailureHandlingByClient {
   @Test
   public void testContainerExclusionWithClosedContainerException()
       throws Exception {
-    startCluster();
     String keyName = UUID.randomUUID().toString();
     OzoneOutputStream key =
         createKey(keyName, ReplicationType.RATIS, blockSize);
@@ -416,11 +433,18 @@ public class TestFailureHandlingByClient {
   @ParameterizedTest
   @EnumSource(value = RaftProtos.ReplicationLevel.class, names = {"MAJORITY_COMMITTED", "ALL_COMMITTED"})
   public void testDatanodeExclusionWithMajorityCommit(RaftProtos.ReplicationLevel type) throws Exception {
-    this.watchType = type;
-    startCluster();
+
+    OzoneConfiguration localConfig = new OzoneConfiguration(conf);
+    RatisClientConfig ratisClientConfig = localConfig.getObject(RatisClientConfig.class);
+    ratisClientConfig.setWatchType(type.toString());
+    localConfig.setFromObject(ratisClientConfig);
+    OzoneClient localClient = OzoneClientFactory.getRpcClient(localConfig);
+    ObjectStore localObjectStore = localClient.getObjectStore();
+
     String keyName = UUID.randomUUID().toString();
     OzoneOutputStream key =
-        createKey(keyName, ReplicationType.RATIS, blockSize);
+        TestHelper.createKey(keyName, ReplicationType.RATIS, blockSize, localObjectStore, volumeName,
+            bucketName);
     String data = ContainerTestHelper
         .getFixedLengthString(keyString,  chunkSize);
 
@@ -447,12 +471,13 @@ public class TestFailureHandlingByClient {
     // shutdown 1 datanode. This will make sure the 2 way commit happens for
     // next write ops.
     cluster.shutdownHddsDatanode(datanodes.get(0));
+    restartDataNodes.add(datanodes.get(0));
 
     key.write(data.getBytes(UTF_8));
     key.write(data.getBytes(UTF_8));
     key.flush();
 
-    if (watchType == RaftProtos.ReplicationLevel.ALL_COMMITTED) {
+    if (type == RaftProtos.ReplicationLevel.ALL_COMMITTED) {
       assertThat(keyOutputStream.getExcludeList().getDatanodes())
           .contains(datanodes.get(0));
     }
@@ -473,12 +498,13 @@ public class TestFailureHandlingByClient {
         keyInfo.getLatestVersionLocations().getBlocksLatestVersionOnly().get(0)
             .getBlockID(), blockId);
     assertEquals(3 * data.getBytes(UTF_8).length, keyInfo.getDataSize());
-    validateData(keyName, data.concat(data).concat(data).getBytes(UTF_8));
+    TestHelper
+        .validateData(keyName, data.concat(data).concat(data).getBytes(UTF_8), localObjectStore, volumeName, bucketName);
+    IOUtils.closeQuietly(localClient);
   }
 
   @Test
   public void testPipelineExclusionWithPipelineFailure() throws Exception {
-    startCluster();
     String keyName = UUID.randomUUID().toString();
     OzoneOutputStream key =
         createKey(keyName, ReplicationType.RATIS, blockSize);
@@ -509,6 +535,8 @@ public class TestFailureHandlingByClient {
     // will be added in the exclude list
     cluster.shutdownHddsDatanode(datanodes.get(0));
     cluster.shutdownHddsDatanode(datanodes.get(1));
+    restartDataNodes.add(datanodes.get(0));
+    restartDataNodes.add(datanodes.get(1));
 
     key.write(data.getBytes(UTF_8));
     key.write(data.getBytes(UTF_8));
