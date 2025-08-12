@@ -75,13 +75,17 @@ import org.apache.ratis.proto.RaftProtos;
 import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.MethodOrderer;
+import org.junit.jupiter.api.Order;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.TestMethodOrder;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.EnumSource;
 
 /**
  * Tests Exception handling by Ozone Client.
  */
+@TestMethodOrder(MethodOrderer.OrderAnnotation.class)
 public class TestFailureHandlingByClient {
 
   private static MiniOzoneCluster cluster;
@@ -180,9 +184,13 @@ public class TestFailureHandlingByClient {
     }
   }
 
+// This test case must run first to avoid resetting the container.
+// Resetting is needed because this test verifies the block size inside the container.
+// To prevent multiple tests from writing to the same container,
+// we run this test first to avoid unnecessary container resets.
+  @Order(1)
   @Test
   public void testBlockWritesWithDnFailures() throws Exception {
-    resetContainers();
     String keyName = UUID.randomUUID().toString();
     OzoneOutputStream key = createKey(keyName, ReplicationType.RATIS, 0);
     byte[] data = ContainerTestHelper.getFixedLengthString(
@@ -227,11 +235,6 @@ public class TestFailureHandlingByClient {
     // Verify that the block information is updated correctly in the DB on
     // failures
     testBlockCountOnFailures(keyInfo);
-  }
-
-  private void resetContainers() {
-    OzoneTestUtils.closeAllContainers(cluster.getStorageContainerManager().getEventQueue(),
-        cluster.getStorageContainerManager());
   }
 
   /**
