@@ -1229,7 +1229,7 @@ public abstract class AbstractS3SDKV1Tests extends OzoneTestBase {
         uploadId = responseXml.substring(startIdx, endIdx);
       }
     } finally {
-      if(initMPUConnection != null) {
+      if (initMPUConnection != null) {
         initMPUConnection.disconnect();
       }
     }
@@ -1280,7 +1280,7 @@ public abstract class AbstractS3SDKV1Tests extends OzoneTestBase {
           PartETag partETag = new PartETag(partNumber, etag);
           completedParts.add(partETag);
         } finally {
-          if(connection != null) {
+          if (connection != null) {
             connection.disconnect();
           }
         }
@@ -1305,10 +1305,11 @@ public abstract class AbstractS3SDKV1Tests extends OzoneTestBase {
       completeMPUConnection.setDoOutput(true);
 
       // Generate completion XML payload
-      StringBuilder completionXml = new StringBuilder("<CompleteMultipartUpload>\n");
+      StringBuilder completionXml = new StringBuilder("<CompleteMultipartUpload>%n");
       for (PartETag part : completedParts) {
-        completionXml.append(String.format("  <Part>\n    <PartNumber>%d</PartNumber>\n    <ETag>%s</ETag>\n  </Part>\n",
-            part.getPartNumber(), part.getETag()));
+        completionXml.append(
+            String.format("  <Part>%n    <PartNumber>%d</PartNumber>%n    <ETag>%s</ETag>%n  </Part>%n",
+                part.getPartNumber(), part.getETag()));
       }
       completionXml.append("</CompleteMultipartUpload>");
 

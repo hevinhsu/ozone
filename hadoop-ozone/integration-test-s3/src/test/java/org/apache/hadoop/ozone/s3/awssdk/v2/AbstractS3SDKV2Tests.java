@@ -726,18 +726,17 @@ public abstract class AbstractS3SDKV2Tests extends OzoneTestBase {
       PresignedCreateMultipartUploadRequest presignCreateMultipartUpload =
           presigner.presignCreateMultipartUpload(createMPUPresignRequest);
 
-      mpuUseHttpURLConnection(presignCreateMultipartUpload, multipartUploadFile, bucketName, keyName, presigner,
+      mpuWithHttpURLConnection(presignCreateMultipartUpload, multipartUploadFile, bucketName, keyName, presigner,
           userMetadata);
-      mpuUseSdkHttpClient(presignCreateMultipartUpload, multipartUploadFile, bucketName, keyName, presigner,
+      mpuWithSdkHttpClient(presignCreateMultipartUpload, multipartUploadFile, bucketName, keyName, presigner,
           userMetadata);
     }
   }
 
-  private void mpuUseHttpURLConnection(PresignedCreateMultipartUploadRequest presignCreateMultipartUpload,
-                                       File multipartUploadFile,
-                                       String bucketName, String keyName, S3Presigner presigner,
-                                       Map<String, String> userMetadata)
-      throws IOException {
+  @SuppressWarnings("checkstyle:MethodLength")
+  private void mpuWithHttpURLConnection(PresignedCreateMultipartUploadRequest presignCreateMultipartUpload,
+                                        File multipartUploadFile, String bucketName, String keyName,
+                                        S3Presigner presigner, Map<String, String> userMetadata) throws IOException {
     URL createMultipartUploadPresignedUrl = presignCreateMultipartUpload.url();
 
     // create MPU using presigned URL
@@ -766,7 +765,7 @@ public abstract class AbstractS3SDKV2Tests extends OzoneTestBase {
         uploadId = responseXml.substring(startIdx, endIdx);
       }
     } finally {
-      if(createMultiPartUploadConnection != null) {
+      if (createMultiPartUploadConnection != null) {
         createMultiPartUploadConnection.disconnect();
       }
     }
@@ -898,10 +897,9 @@ public abstract class AbstractS3SDKV2Tests extends OzoneTestBase {
     }
   }
 
-  private void mpuUseSdkHttpClient(PresignedCreateMultipartUploadRequest presignCreateMultipartUpload,
-                                   File multipartUploadFile, String bucketName, String keyName,
-                                   S3Presigner presigner, Map<String, String> userMetadata)
-      throws IOException {
+  private void mpuWithSdkHttpClient(PresignedCreateMultipartUploadRequest presignCreateMultipartUpload,
+                                    File multipartUploadFile, String bucketName, String keyName,
+                                    S3Presigner presigner, Map<String, String> userMetadata) throws Exception {
     // create MPU using presigned URL
     String uploadId;
     try (SdkHttpClient sdkHttpClient = ApacheHttpClient.create()) {
@@ -1031,15 +1029,13 @@ public abstract class AbstractS3SDKV2Tests extends OzoneTestBase {
       String actualContent = downloadKey(bucketName, keyName);
       String originalContent = new String(Files.readAllBytes(multipartUploadFile.toPath()), StandardCharsets.UTF_8);
       assertEquals(originalContent, actualContent, "Uploaded file content should match original file content");
-    } catch (Exception e) {
-      throw new IOException("Failed to execute multipart upload using SDK HTTP client", e);
     }
   }
 
   private static String buildCompleteMultipartUploadXml(List<CompletedPart> parts) {
-    StringBuilder xml = new StringBuilder("<CompleteMultipartUpload>\n");
+    StringBuilder xml = new StringBuilder("<CompleteMultipartUpload>%n");
     for (CompletedPart part : parts) {
-      xml.append(String.format("  <Part>\n    <PartNumber>%d</PartNumber>\n    <ETag>%s</ETag>\n  </Part>\n",
+      xml.append(String.format("  <Part>%n    <PartNumber>%d</PartNumber>%n    <ETag>%s</ETag>%n  </Part>%n",
           part.partNumber(), part.eTag()));
     }
     xml.append("</CompleteMultipartUpload>");
