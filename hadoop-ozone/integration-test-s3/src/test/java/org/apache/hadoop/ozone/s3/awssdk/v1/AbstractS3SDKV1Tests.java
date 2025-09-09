@@ -1200,7 +1200,7 @@ public abstract class AbstractS3SDKV1Tests extends OzoneTestBase {
     File multipartUploadFile = Files.createFile(tempDir.resolve("multipartupload.txt")).toFile();
     createFile(multipartUploadFile, (int) (10 * MB));
 
-    // Create multipart upload
+    // create MPU using presigned URL
     GeneratePresignedUrlRequest initMPUPresignUrlRequest = new GeneratePresignedUrlRequest(bucketName, keyName)
         .withMethod(HttpMethod.POST)
         .withExpiration(new Date(System.currentTimeMillis() + 1000 * 60 * 60));
@@ -1208,15 +1208,12 @@ public abstract class AbstractS3SDKV1Tests extends OzoneTestBase {
     initMPUPresignUrlRequest.putCustomRequestHeader("x-amz-meta-key2", "value2");
     initMPUPresignUrlRequest.putCustomRequestHeader(S3Consts.TAG_HEADER, "tag1=value1,tg2=value2");
 
-
     URL iniMPUPresignUrl = s3Client.generatePresignedUrl(initMPUPresignUrlRequest);
 
     String uploadId;
     HttpURLConnection initMPUConnection = null;
     try {
-
       initMPUConnection = (HttpURLConnection) iniMPUPresignUrl.openConnection();
-
       initMPUConnection.setRequestMethod("POST");
       initMPUConnection.setDoOutput(true);
       initMPUConnection.setRequestProperty("x-amz-meta-key1", "value1");
@@ -1237,7 +1234,7 @@ public abstract class AbstractS3SDKV1Tests extends OzoneTestBase {
       }
     }
 
-    // Upload parts using presigned URL
+    // upload parts using presigned URL
     List<PartETag> completedParts = new ArrayList<>();
     ByteBuffer byteBuffer = ByteBuffer.allocate((int) (5 * MB));
     long filePosition = 0;
@@ -1250,7 +1247,7 @@ public abstract class AbstractS3SDKV1Tests extends OzoneTestBase {
         long bytesRead = file.getChannel().read(byteBuffer);
         byteBuffer.flip();
 
-        // Generate presigned URL for each part
+        // generate presigned URL for each part
         GeneratePresignedUrlRequest generatePresignedUrlRequest =
             new GeneratePresignedUrlRequest(bucketName, keyName)
                 .withMethod(HttpMethod.PUT)
@@ -1260,7 +1257,7 @@ public abstract class AbstractS3SDKV1Tests extends OzoneTestBase {
 
         URL presignedUrl = s3Client.generatePresignedUrl(generatePresignedUrlRequest);
 
-        // Upload part using HttpURLConnection
+        // upload each part using presigned URL
         HttpURLConnection connection = null;
         try {
           connection = (HttpURLConnection) presignedUrl.openConnection();

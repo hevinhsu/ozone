@@ -710,7 +710,7 @@ public abstract class AbstractS3SDKV2Tests extends OzoneTestBase {
 
     try (S3Presigner presigner = createS3Presigner()) {
 
-      // 1. Create multipart upload
+      // generate create MPU presigned URL
       CreateMultipartUploadRequest createRequest = CreateMultipartUploadRequest.builder()
           .bucket(bucketName)
           .key(keyName)
@@ -740,6 +740,7 @@ public abstract class AbstractS3SDKV2Tests extends OzoneTestBase {
       throws IOException {
     URL createMultipartUploadPresignedUrl = presignCreateMultipartUpload.url();
 
+    // create MPU using presigned URL
     String uploadId;
     HttpURLConnection createMultiPartUploadConnection = null;
     try {
@@ -769,8 +770,6 @@ public abstract class AbstractS3SDKV2Tests extends OzoneTestBase {
         createMultiPartUploadConnection.disconnect();
       }
     }
-
-
 
     // Upload parts using presigned URL
     List<CompletedPart> completedParts = new ArrayList<>();
@@ -804,7 +803,7 @@ public abstract class AbstractS3SDKV2Tests extends OzoneTestBase {
 
         PresignedUploadPartRequest presignedRequest = presigner.presignUploadPart(presignRequest);
 
-        // Use HttpURLConnection to upload the part
+        // use presigned URL to upload the part
         URL presignedUrl = presignedRequest.url();
         HttpURLConnection connection = null;
         try {
@@ -841,7 +840,7 @@ public abstract class AbstractS3SDKV2Tests extends OzoneTestBase {
       }
     }
 
-    // Complete multipart upload
+    // complete MPU using presigned URL
     CompleteMultipartUploadRequest completeRequest = CompleteMultipartUploadRequest.builder()
         .bucket(bucketName)
         .key(keyName)
@@ -884,12 +883,11 @@ public abstract class AbstractS3SDKV2Tests extends OzoneTestBase {
       assertEquals(200, completeMultipartUploadConnectionResponseCode,
           "CompleteMultipartUploadPresignRequest should return 200 OK");
 
-      // Verify upload result
+      // verify upload result
       HeadObjectResponse headObjectResponse = s3Client.headObject(b -> b.bucket(bucketName).key(keyName));
       assertTrue(headObjectResponse.hasMetadata());
       assertEquals(userMetadata, headObjectResponse.metadata());
 
-      // Verify content
       String actualContent = downloadKey(bucketName, keyName);
       String originalContent = new String(Files.readAllBytes(multipartUploadFile.toPath()), StandardCharsets.UTF_8);
       assertEquals(originalContent, actualContent, "Uploaded file content should match original file content");
@@ -904,6 +902,7 @@ public abstract class AbstractS3SDKV2Tests extends OzoneTestBase {
                                    File multipartUploadFile, String bucketName, String keyName,
                                    S3Presigner presigner, Map<String, String> userMetadata)
       throws IOException {
+    // create MPU using presigned URL
     String uploadId;
     try (SdkHttpClient sdkHttpClient = ApacheHttpClient.create()) {
       SdkHttpRequest createMultipartUploadRequest = SdkHttpRequest.builder()
@@ -957,7 +956,7 @@ public abstract class AbstractS3SDKV2Tests extends OzoneTestBase {
 
           PresignedUploadPartRequest presignedRequest = presigner.presignUploadPart(presignRequest);
 
-          // Use SDK HTTP client to upload the part
+          // upload each part using presigned URL
           SdkHttpRequest uploadPartSdkRequest = SdkHttpRequest.builder()
               .method(SdkHttpMethod.PUT)
               .uri(presignedRequest.url().toURI())
@@ -989,7 +988,7 @@ public abstract class AbstractS3SDKV2Tests extends OzoneTestBase {
         }
       }
 
-      // Complete multipart upload
+      // complete MPU using presigned URL
       CompleteMultipartUploadRequest completeRequest = CompleteMultipartUploadRequest.builder()
           .bucket(bucketName)
           .key(keyName)
@@ -1021,13 +1020,14 @@ public abstract class AbstractS3SDKV2Tests extends OzoneTestBase {
 
       HttpExecuteResponse completeMultipartUploadResponse =
           sdkHttpClient.prepareRequest(completeMultipartUploadExecuteRequest).call();
+      assertEquals(200, completeMultipartUploadResponse.httpResponse().statusCode(),
+          "CompleteMultipartUploadPresignRequest should return 200 OK");
 
-      // Verify upload result
+      // verify upload result
       HeadObjectResponse headObjectResponse = s3Client.headObject(b -> b.bucket(bucketName).key(keyName));
       assertTrue(headObjectResponse.hasMetadata());
       assertEquals(userMetadata, headObjectResponse.metadata());
 
-      // Verify content
       String actualContent = downloadKey(bucketName, keyName);
       String originalContent = new String(Files.readAllBytes(multipartUploadFile.toPath()), StandardCharsets.UTF_8);
       assertEquals(originalContent, actualContent, "Uploaded file content should match original file content");
