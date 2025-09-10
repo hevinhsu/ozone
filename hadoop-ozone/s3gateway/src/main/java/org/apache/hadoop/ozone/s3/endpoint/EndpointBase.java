@@ -507,7 +507,6 @@ public abstract class EndpointBase implements Auditor {
     this.signatureInfo = signatureInfo;
   }
 
-  @VisibleForTesting
   public OzoneClient getClient() {
     return client;
   }

@@ -1032,7 +1032,7 @@ public abstract class AbstractS3SDKV2Tests extends OzoneTestBase {
     }
   }
 
-  private static String buildCompleteMultipartUploadXml(List<CompletedPart> parts) {
+  private String buildCompleteMultipartUploadXml(List<CompletedPart> parts) {
     StringBuilder xml = new StringBuilder("<CompleteMultipartUpload>%n");
     for (CompletedPart part : parts) {
       xml.append(String.format("  <Part>%n    <PartNumber>%d</PartNumber>%n    <ETag>%s</ETag>%n  </Part>%n",
