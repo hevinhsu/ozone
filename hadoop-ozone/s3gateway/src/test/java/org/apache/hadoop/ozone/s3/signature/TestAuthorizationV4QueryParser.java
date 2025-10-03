@@ -288,7 +288,7 @@ public class TestAuthorizationV4QueryParser {
 
     final String stringToSign =
         StringToSignProducer.createSignatureBase(signatureInfo, "https", "GET",
-            headers, queryParams);
+            headers, queryParams, "".getBytes(StandardCharsets.UTF_8));
 
     MessageDigest md = MessageDigest.getInstance("SHA-256");
     md.update(canonicalRequest.getBytes(StandardCharsets.UTF_8));
