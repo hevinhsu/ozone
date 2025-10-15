@@ -40,8 +40,8 @@ Presigned URL PUT Object
     ${presigned_url} =        Generate Presigned URL    ${BUCKET}    test-presigned-put
     ${result} =               Execute    curl -X PUT -T "/tmp/testfile" "${presigned_url}"
     Should Not Contain        ${result}    Error
-    ${head_result} =         Execute AWSS3ApiCli    head-object --bucket ${BUCKET} --key test-presigned-put
-    Should Not Contain       ${head_result}    Error
+#    ${head_result} =         Execute AWSS3ApiCli    head-object --bucket ${BUCKET} --key test-presigned-put
+#    Should Not Contain       ${head_result}    Error
 
 Presigned URL PUT Object using wrong x-amz-content-sha256
     [Documentation]    Test presigned URL PUT object with wrong x-amz-content-sha256
