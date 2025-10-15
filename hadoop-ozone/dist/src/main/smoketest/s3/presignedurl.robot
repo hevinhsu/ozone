@@ -43,6 +43,9 @@ Presigned URL PUT Object
 #    ${head_result} =         Execute AWSS3ApiCli    head-object --bucket ${BUCKET} --key test-presigned-put
 #    Should Not Contain       ${head_result}    Error
 
+Head Bucket
+    ${result} =         Execute AWSS3APICli     head-bucket --bucket ${BUCKET}
+
 Presigned URL PUT Object using wrong x-amz-content-sha256
     [Documentation]    Test presigned URL PUT object with wrong x-amz-content-sha256
     Execute                    echo "Randomtext" > /tmp/testfile
