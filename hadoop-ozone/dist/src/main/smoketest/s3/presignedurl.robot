@@ -39,7 +39,7 @@ Presigned URL PUT Object
     Execute                    echo "Randomtext" > /tmp/testfile
     ${presigned_url} =        Generate Presigned URL    ${BUCKET}    test-presigned-put
     log    ${OZONE_S3_SET_CREDENTIALS}
-    ${qq} =  Execute AWSS3APICli    get-bucket-acl  --bucket ${BUCKET}
+    ${qq} =  Execute AWSS3APICli    get-bucket-acl --bucket ${BUCKET}
     log   ${qq}
     ${result} =               Execute    curl -X PUT -T "/tmp/testfile" "${presigned_url}"
     Should Not Contain        ${result}    Error
