@@ -38,6 +38,7 @@ Presigned URL PUT Object
     [Documentation]    Test presigned URL PUT object
     Execute                    echo "Randomtext" > /tmp/testfile
     ${presigned_url} =        Generate Presigned URL    ${BUCKET}    test-presigned-put
+    log    ${OZONE_S3_SET_CREDENTIALS}
     ${result} =               Execute    curl -X PUT -T "/tmp/testfile" "${presigned_url}"
     Should Not Contain        ${result}    Error
 #    ${head_result} =         Execute AWSS3ApiCli    head-object --bucket ${BUCKET} --key test-presigned-put
