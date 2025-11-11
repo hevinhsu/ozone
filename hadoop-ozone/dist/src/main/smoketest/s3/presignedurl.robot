@@ -17,6 +17,7 @@
 Documentation       S3 gateway test with aws cli
 Library             OperatingSystem
 Library             String
+Library             ./presigned_url_helper.py
 Resource            ../commonlib.robot
 Resource            commonawslib.robot
 Test Timeout        5 minutes
@@ -37,14 +38,17 @@ Generate Presigned URL
 Presigned URL PUT Object
     [Documentation]    Test presigned URL PUT object
     Execute                    echo "Randomtext" > /tmp/testfile
-    ${presigned_url} =        Generate Presigned URL    ${BUCKET}    test-presigned-put
+    ${ACCESS_KEY} =    Execute    aws configure get aws_access_key_id
+    ${SECRET_ACCESS_KEY} =   Execute    aws configure get aws_secret_access_key
+    ${presigned_url}=    Generate Presigned Put Object Url    ${ACCESS_KEY}    ${SECRET_ACCESS_KEY}    ${BUCKET}    test-presigned-put    us-east-1    3600    ${EMPTY}    ${ENDPOINT_URL}
     log    ${OZONE_S3_SET_CREDENTIALS}
+    log    ${presigned_url}
     ${qq} =  Execute AWSS3APICli    get-bucket-acl --bucket ${BUCKET}
     log   ${qq}
     ${result} =               Execute    curl -X PUT -T "/tmp/testfile" "${presigned_url}"
     Should Not Contain        ${result}    Error
-#    ${head_result} =         Execute AWSS3ApiCli    head-object --bucket ${BUCKET} --key test-presigned-put
-#    Should Not Contain       ${head_result}    Error
+    ${head_result} =         Execute AWSS3ApiCli    head-object --bucket ${BUCKET} --key test-presigned-put
+    Should Not Contain       ${head_result}    Error
 
 Head Bucket
     ${result} =         Execute AWSS3APICli     head-bucket --bucket ${BUCKET}
