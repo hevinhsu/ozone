@@ -20,6 +20,11 @@ package org.apache.hadoop.ozone.s3.signature;
 import static java.time.temporal.ChronoUnit.SECONDS;
 import static org.apache.hadoop.ozone.s3.exception.S3ErrorTable.S3_AUTHINFO_CREATION_ERROR;
 import static org.apache.hadoop.ozone.s3.exception.S3ErrorTable.X_AMZ_CONTENT_SHA256_MISMATCH;
+import static org.apache.hadoop.ozone.s3.util.S3Consts.STREAMING_AWS4_ECDSA_P256_SHA256_PAYLOAD;
+import static org.apache.hadoop.ozone.s3.util.S3Consts.STREAMING_AWS4_ECDSA_P256_SHA256_PAYLOAD_TRAILER;
+import static org.apache.hadoop.ozone.s3.util.S3Consts.STREAMING_AWS4_HMAC_SHA256_PAYLOAD;
+import static org.apache.hadoop.ozone.s3.util.S3Consts.STREAMING_AWS4_HMAC_SHA256_PAYLOAD_TRAILER;
+import static org.apache.hadoop.ozone.s3.util.S3Consts.STREAMING_UNSIGNED_PAYLOAD_TRAILER;
 import static org.apache.hadoop.ozone.s3.util.S3Consts.UNSIGNED_PAYLOAD;
 import static org.apache.hadoop.ozone.s3.util.S3Consts.X_AMZ_CONTENT_SHA256;
 
@@ -80,11 +85,11 @@ public final class StringToSignProducer {
   static {
     Set<String> set = new HashSet<>();
     set.add(UNSIGNED_PAYLOAD);
-    set.add("STREAMING-UNSIGNED-PAYLOAD-TRAILER");
-    set.add("STREAMING-AWS4-HMAC-SHA256-PAYLOAD");
-    set.add("STREAMING-AWS4-HMAC-SHA256-PAYLOAD-TRAILER");
-    set.add("STREAMING-AWS4-ECDSA-P256-SHA256-PAYLOAD");
-    set.add("STREAMING-AWS4-ECDSA-P256-SHA256-PAYLOAD-TRAILER");
+    set.add(STREAMING_UNSIGNED_PAYLOAD_TRAILER);
+    set.add(STREAMING_AWS4_HMAC_SHA256_PAYLOAD);
+    set.add(STREAMING_AWS4_HMAC_SHA256_PAYLOAD_TRAILER);
+    set.add(STREAMING_AWS4_ECDSA_P256_SHA256_PAYLOAD);
+    set.add(STREAMING_AWS4_ECDSA_P256_SHA256_PAYLOAD_TRAILER);
     VALID_UNSIGNED_PAYLOADS = Collections.unmodifiableSet(set);
   }
 
@@ -246,10 +251,6 @@ public final class StringToSignProducer {
     }
 
     final String actualSha256 = hash(payload);
-    if (VALID_UNSIGNED_PAYLOADS.contains(actualSha256)) {
-      return;
-    }
-
     if (!expectedSha256.equals(actualSha256)) {
       LOG.error("Payload hash does not match. Expected: {}, Actual: {}", expectedSha256, actualSha256);
       throw X_AMZ_CONTENT_SHA256_MISMATCH;
