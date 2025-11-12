@@ -112,7 +112,11 @@ public final class StringToSignProducer {
     if (!VALID_UNSIGNED_PAYLOADS.contains(payloadHash)) {
       byte[] payload = IOUtils.toByteArray(context.getEntityStream());
       context.setEntityStream(new ByteArrayInputStream(payload));
-      verifyRequestPayload(payloadHash, payload);
+      final String actualSha256 = hash(payload);
+      if (!payloadHash.equals(actualSha256)) {
+        LOG.error("Payload hash does not match. Expected: {}, Actual: {}", payloadHash, actualSha256);
+        throw X_AMZ_CONTENT_SHA256_MISMATCH;
+      }
     }
 
     return signatureBase;
@@ -241,20 +245,6 @@ public final class StringToSignProducer {
         + canonicalHeaders + NEWLINE
         + signedHeaders + NEWLINE
         + payloadHash;
-  }
-
-  private static void verifyRequestPayload(String expectedSha256, byte[] payload)
-      throws Exception {
-
-    if (VALID_UNSIGNED_PAYLOADS.contains(expectedSha256)) {
-      return;
-    }
-
-    final String actualSha256 = hash(payload);
-    if (!expectedSha256.equals(actualSha256)) {
-      LOG.error("Payload hash does not match. Expected: {}, Actual: {}", expectedSha256, actualSha256);
-      throw X_AMZ_CONTENT_SHA256_MISMATCH;
-    }
   }
 
   private static String getPayloadHash(Map<String, String> headers, boolean isUsingQueryParameter)
