@@ -632,7 +632,7 @@ public abstract class AbstractS3SDKV2Tests extends OzoneTestBase {
         Map<String, List<String>> headers = presignedRequest.signedHeaders();
         List<String> sha256Value = new ArrayList<>();
         sha256Value.add(sha256);
-        headers.put(S3Consts.X_AMZ_CONTENT_SHA256, sha256Value);
+        headers.put("x-amz-content-sha256", sha256Value);
         connection = S3SDKTestUtils.openHttpURLConnection(presignedRequest.url(), "PUT",
             headers, requestBody);
         int responseCode = connection.getResponseCode();
