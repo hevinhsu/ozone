@@ -25,6 +25,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNotEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static software.amazon.awssdk.core.sync.RequestBody.fromString;
@@ -36,6 +37,7 @@ import java.io.IOException;
 import java.io.InputStream;
 import java.io.RandomAccessFile;
 import java.net.HttpURLConnection;
+import java.net.URI;
 import java.net.URL;
 import java.nio.ByteBuffer;
 import java.nio.charset.StandardCharsets;
@@ -532,6 +534,45 @@ public abstract class AbstractS3SDKV2Tests extends OzoneTestBase {
           }
         });
         assertEquals(CONTENT, bos.toString("UTF-8"));
+      }
+    }
+
+    @Test
+    public void testConflictingHeaderAndQueryParameterWithPresignedUrl() throws Exception {
+      final String bucketName = getBucketName();
+      final String keyName = getKeyName();
+      s3Client.createBucket(b -> b.bucket(bucketName));
+      s3Client.putObject(b -> b.bucket(bucketName).key(keyName),
+          RequestBody.fromString("test-content"));
+
+      URI endpoint = s3Client.serviceClientConfiguration().endpointOverride().get();
+      String host = endpoint.getHost() + ":" + endpoint.getPort();
+
+      String presignedUrl = String.format(
+          "%s://%s/%s/%s?" +
+              "X-Amz-Algorithm=AWS4-HMAC-SHA256&" +
+              "X-Amz-Credential=testuser%%2F20251117%%2Fus-east-1%%2Fs3%%2Faws4_request&" +
+              "X-Amz-Date=20251117T120000Z&" +
+              "X-Amz-Expires=3600&" +
+              "X-Amz-SignedHeaders=host;X-Amz-Security-Token&" +
+              // use query-token-value as value
+              "X-Amz-Security-Token=query-token-value&" +
+              "X-Amz-Signature=aeeed9bbccd4d02ee5c0109b86d86835f995330da4c265957d157751f604d404",
+          endpoint.getScheme(), host, bucketName, keyName);
+      try (SdkHttpClient httpClient = ApacheHttpClient.builder().build()) {
+        SdkHttpRequest httpRequest = SdkHttpRequest.builder()
+            .method(SdkHttpMethod.GET)
+            .uri(URI.create(presignedUrl))
+            .putHeader("Host", host)
+            // use "header-token-value" as value
+            .putHeader("X-Amz-Security-Token", "header-token-value")
+            .build();
+        HttpExecuteRequest executeRequest = HttpExecuteRequest.builder()
+            .request(httpRequest)
+            .build();
+        HttpExecuteResponse response = httpClient.prepareRequest(executeRequest).call();
+        int statusCode = response.httpResponse().statusCode();
+        assertNotEquals(statusCode, 200);
       }
     }
 
