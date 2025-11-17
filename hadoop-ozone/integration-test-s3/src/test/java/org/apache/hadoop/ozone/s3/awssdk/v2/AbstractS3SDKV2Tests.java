@@ -73,6 +73,7 @@ import org.apache.hadoop.ozone.s3.S3ClientFactory;
 import org.apache.hadoop.ozone.s3.awssdk.S3SDKTestUtils;
 import org.apache.hadoop.ozone.s3.endpoint.S3Owner;
 import org.apache.hadoop.security.UserGroupInformation;
+import org.apache.http.client.utils.URIBuilder;
 import org.apache.ozone.test.OzoneTestBase;
 import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.BeforeAll;
@@ -545,34 +546,35 @@ public abstract class AbstractS3SDKV2Tests extends OzoneTestBase {
       s3Client.putObject(b -> b.bucket(bucketName).key(keyName),
           RequestBody.fromString("test-content"));
 
-      URI endpoint = s3Client.serviceClientConfiguration().endpointOverride().get();
-      String host = endpoint.getHost() + ":" + endpoint.getPort();
+      PresignedGetObjectRequest presignedRequest = presigner.presignGetObject(
+          GetObjectPresignRequest.builder()
+              .signatureDuration(Duration.ofHours(1))
+              .getObjectRequest(req -> req
+                  .bucket(bucketName)
+                  .key(keyName)
+                  // add header to signedHeaders
+                  .overrideConfiguration(cfg -> cfg
+                      .putHeader("X-Amz-Security-Token", "original-token-value")))
+              .build());
 
-      String presignedUrl = String.format(
-          "%s://%s/%s/%s?" +
-              "X-Amz-Algorithm=AWS4-HMAC-SHA256&" +
-              "X-Amz-Credential=testuser%%2F20251117%%2Fus-east-1%%2Fs3%%2Faws4_request&" +
-              "X-Amz-Date=20251117T120000Z&" +
-              "X-Amz-Expires=3600&" +
-              "X-Amz-SignedHeaders=host;X-Amz-Security-Token&" +
-              // use query-token-value as value
-              "X-Amz-Security-Token=query-token-value&" +
-              "X-Amz-Signature=aeeed9bbccd4d02ee5c0109b86d86835f995330da4c265957d157751f604d404",
-          endpoint.getScheme(), host, bucketName, keyName);
+      // Add X-Amz-Security-Token query parameter manually because the SDK does not add the header to the query parameters.
+      URIBuilder uriBuilder = new URIBuilder(presignedRequest.url().toURI());
+      uriBuilder.addParameter("X-Amz-Security-Token", "original-token-value");
+      URI modifiedUri = uriBuilder.build();
+      
       try (SdkHttpClient httpClient = ApacheHttpClient.builder().build()) {
         SdkHttpRequest httpRequest = SdkHttpRequest.builder()
+            .uri(modifiedUri)
             .method(SdkHttpMethod.GET)
-            .uri(URI.create(presignedUrl))
-            .putHeader("Host", host)
-            // use "header-token-value" as value
-            .putHeader("X-Amz-Security-Token", "header-token-value")
+            // add different value into headers
+            .putHeader("X-Amz-Security-Token", "different-token-value")
             .build();
-        HttpExecuteRequest executeRequest = HttpExecuteRequest.builder()
-            .request(httpRequest)
-            .build();
-        HttpExecuteResponse response = httpClient.prepareRequest(executeRequest).call();
-        int statusCode = response.httpResponse().statusCode();
-        assertNotEquals(statusCode, 200);
+
+        HttpExecuteResponse response = httpClient.prepareRequest(
+            HttpExecuteRequest.builder().request(httpRequest).build()
+        ).call();
+
+        assertNotEquals(200, response.httpResponse().statusCode());
       }
     }
 
