@@ -86,7 +86,7 @@ public class TestS3Utils {
   @ParameterizedTest
   @MethodSource("validS3ReplicationConfigs")
   public void testValidResolveS3ClientSideReplicationConfig(String s3StorageType, String s3StorageConfig,
-                                                            ReplicationConfig clientConfiguredReplConfig, ReplicationConfig bucketReplConfig)
+      ReplicationConfig clientConfiguredReplConfig, ReplicationConfig bucketReplConfig)
       throws OS3Exception {
     ReplicationConfig replicationConfig = S3Utils
         .resolveS3ClientSideReplicationConfig(s3StorageType, s3StorageConfig,
@@ -135,7 +135,7 @@ public class TestS3Utils {
   @ParameterizedTest
   @MethodSource("invalidS3ReplicationConfigs")
   public void testResolveRepConfWhenUserPassedIsInvalid(String s3StorageType, String s3StorageConfig,
-                                                        ReplicationConfig clientConfiguredReplConfig, ReplicationConfig bucketReplConfig)
+      ReplicationConfig clientConfiguredReplConfig, ReplicationConfig bucketReplConfig)
       throws OS3Exception {
     OS3Exception exception = assertThrows(OS3Exception.class, () -> S3Utils.
         resolveS3ClientSideReplicationConfig(
