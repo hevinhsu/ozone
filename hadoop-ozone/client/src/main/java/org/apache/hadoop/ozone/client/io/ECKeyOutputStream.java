@@ -88,6 +88,7 @@ public final class ECKeyOutputStream extends KeyOutputStream
   private Runnable preCommit = () -> {
   };
 
+  @Override
   public void setPreCommit(Runnable preCommit) {
     this.preCommit = preCommit;
   }
