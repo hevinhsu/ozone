@@ -81,6 +81,13 @@ public class KeyDataStreamOutput extends AbstractDataStreamOutput
    */
   private boolean atomicKeyCreation;
 
+  private Runnable preCommit = () -> {
+  };
+
+  public void setPreCommit(Runnable preCommit) {
+    this.preCommit = preCommit;
+  }
+
   @VisibleForTesting
   public List<BlockDataStreamOutputEntry> getStreamEntries() {
     return blockDataStreamOutputEntryPool.getStreamEntries();
@@ -430,17 +437,11 @@ public class KeyDataStreamOutput extends AbstractDataStreamOutput
             String.format("Expected: %d and actual %d write sizes do not match",
                 expectedSize, offset));
       }
+      preCommit.run();
       blockDataStreamOutputEntryPool.commitKey(offset);
     } finally {
       blockDataStreamOutputEntryPool.cleanup();
     }
-  }
-
-  /**
-   * Cleanup the incomplete multipart upload parts.
-   */
-  public void cleanup() {
-    blockDataStreamOutputEntryPool.cleanup();
   }
 
   public OmMultipartCommitUploadPartInfo getCommitUploadPartInfo() {

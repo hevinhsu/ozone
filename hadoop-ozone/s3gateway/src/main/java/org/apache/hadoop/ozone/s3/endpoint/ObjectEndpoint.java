@@ -77,6 +77,7 @@ import java.text.ParseException;
 import java.time.Instant;
 import java.time.ZoneId;
 import java.time.ZonedDateTime;
+import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -144,6 +145,7 @@ import org.apache.hadoop.ozone.s3.util.S3Consts;
 import org.apache.hadoop.ozone.s3.util.S3StorageType;
 import org.apache.hadoop.ozone.s3.util.S3Utils;
 import org.apache.hadoop.ozone.web.utils.OzoneUtils;
+import org.apache.hadoop.util.Preconditions;
 import org.apache.hadoop.util.Time;
 import org.apache.http.HttpStatus;
 import org.slf4j.Logger;
@@ -341,37 +343,33 @@ public class ObjectEndpoint extends EndpointBase {
         eTag = keyWriteResult.getKey();
         putLength = keyWriteResult.getValue();
       } else {
-        OzoneOutputStream output = null;
-        boolean hasValidSha256 = true;
-        try {
-          output = getClientProtocol().createKey(
-              volume.getName(), bucketName, keyPath, length, replicationConfig,
-              customMetadata, tags);
+        try (OzoneOutputStream output = getClientProtocol().createKey(
+            volume.getName(), bucketName, keyPath, length, replicationConfig,
+            customMetadata, tags)) {
           long metadataLatencyNs =
               getMetrics().updatePutKeyMetadataStats(startNanos);
           perf.appendMetaLatencyNanos(metadataLatencyNs);
           putLength = IOUtils.copyLarge(multiDigestInputStream, output, 0, length,
               new byte[getIOBufferSize(length)]);
-
-          // validate "X-AMZ-CONTENT-SHA256"
-          String sha256 = DatatypeConverter.printHexBinary(
-                  multiDigestInputStream.getMessageDigest(OzoneConsts.FILE_HASH).digest())
-              .toLowerCase();
           eTag = DatatypeConverter.printHexBinary(
                   multiDigestInputStream.getMessageDigest(OzoneConsts.MD5_HASH).digest())
               .toLowerCase();
           output.getMetadata().put(ETAG, eTag);
-          hasValidSha256 = S3Utils.isValidXAmzContentSHA256Header(headers, sha256, signatureInfo.isSignPayload());
-          if (!hasValidSha256) {
-            throw S3ErrorTable.newError(S3ErrorTable.X_AMZ_CONTENT_SHA256_MISMATCH, keyPath);
-          }
-        } finally {
-          if (output != null) {
-            if (hasValidSha256) {
-              output.close();
-            } else {
-              output.getKeyOutputStream().cleanup();
-            }
+
+          final String amzContentSha256Header =
+              validateSignatureHeader(headers, keyPath, signatureInfo.isSignPayload());
+          // If x-amz-content-sha256 is present and is not an unsigned payload
+          // or multi-chunk payload, validate the sha256.
+          MessageDigest sha256Digest = multiDigestInputStream.getMessageDigest(OzoneConsts.FILE_HASH);
+          if (sha256Digest != null && !hasUnsignedPayload(amzContentSha256Header) &&
+              !hasMultiChunksPayload(amzContentSha256Header)) {
+            final String actualSha256 = DatatypeConverter.printHexBinary(
+                sha256Digest.digest()).toLowerCase();
+            output.getKeyOutputStream().setPreCommit(() -> {
+              Preconditions.checkArgument(amzContentSha256Header.equals(actualSha256),
+                  S3ErrorTable.X_AMZ_CONTENT_SHA256_MISMATCH.getErrorMessage());
+                }
+            );
           }
         }
       }
@@ -421,13 +419,16 @@ public class ObjectEndpoint extends EndpointBase {
       } else {
         getMetrics().updateCreateKeyFailureStats(startNanos);
       }
+      if (ex instanceof IllegalArgumentException &&
+          ex.getMessage().equals(S3ErrorTable.X_AMZ_CONTENT_SHA256_MISMATCH.getErrorMessage())) {
+        throw S3ErrorTable.newError(S3ErrorTable.X_AMZ_CONTENT_SHA256_MISMATCH, keyPath);
+      }
       throw ex;
     } finally {
       // Reset the thread-local message digest instance in case of exception
       // and MessageDigest#digest is never called
       if (multiDigestInputStream != null) {
-        multiDigestInputStream.getMessageDigest(OzoneConsts.MD5_HASH).reset();
-        multiDigestInputStream.getMessageDigest(OzoneConsts.FILE_HASH).reset();
+        multiDigestInputStream.resetDigests();
       }
       if (auditSuccess) {
         long opLatencyNs = getMetrics().updateCreateKeySuccessStats(startNanos);
@@ -1155,8 +1156,7 @@ public class ObjectEndpoint extends EndpointBase {
       // Reset the thread-local message digest instance in case of exception
       // and MessageDigest#digest is never called
       if (multiDigestInputStream != null) {
-        multiDigestInputStream.getMessageDigest(OzoneConsts.MD5_HASH).reset();
-        multiDigestInputStream.getMessageDigest(OzoneConsts.FILE_HASH).reset();
+        multiDigestInputStream.resetDigests();
       }
     }
   }
@@ -1586,10 +1586,13 @@ public class ObjectEndpoint extends EndpointBase {
     final String amzContentSha256Header = validateSignatureHeader(headers, keyPath, signatureInfo.isSignPayload());
     final InputStream chunkInputStream;
     final long effectiveLength;
+    List<MessageDigest> digests = new ArrayList<>();
+    digests.add(getMessageDigestInstance());
     if (hasMultiChunksPayload(amzContentSha256Header)) {
       validateMultiChunksUpload(headers, amzDecodedLength, keyPath);
       if (hasUnsignedPayload(amzContentSha256Header)) {
         chunkInputStream = new UnsignedChunksInputStream(body);
+        digests.add(getSha256DigestInstance());
       } else {
         chunkInputStream = new SignedChunksInputStream(body);
       }
@@ -1605,7 +1608,7 @@ public class ObjectEndpoint extends EndpointBase {
 
     // DigestInputStream is used for ETag calculation
     MultiDigestInputStream multiDigestInputStream =
-        new MultiDigestInputStream(chunkInputStream, getMessageDigestInstance(), getSha256DigestInstance());
+        new MultiDigestInputStream(chunkInputStream, digests);
     return new S3ChunkInputStreamInfo(multiDigestInputStream, effectiveLength);
   }
 
