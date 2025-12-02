@@ -85,6 +85,13 @@ public final class ECKeyOutputStream extends KeyOutputStream
   // how much data has been ingested into the stream
   private long writeOffset;
 
+  private Runnable preCommit = () -> {
+  };
+
+  public void setPreCommit(Runnable preCommit) {
+    this.preCommit = preCommit;
+  }
+
   @VisibleForTesting
   public void insertFlushCheckpoint(long version) throws IOException {
     addStripeToQueue(new CheckpointDummyStripe(version));
@@ -484,6 +491,7 @@ public final class ECKeyOutputStream extends KeyOutputStream
               "Expected: %d and actual %d write sizes do not match",
                   expectedSize, offset));
         }
+        preCommit.run();
         blockOutputStreamEntryPool.commitKey(offset);
       }
     } catch (ExecutionException e) {
