@@ -19,6 +19,7 @@ package org.apache.hadoop.ozone.client.io;
 
 import com.google.common.annotations.VisibleForTesting;
 import com.google.common.base.Preconditions;
+import jakarta.annotation.Nonnull;
 import java.io.IOException;
 import java.nio.Buffer;
 import java.nio.ByteBuffer;
@@ -85,6 +86,14 @@ public final class ECKeyOutputStream extends KeyOutputStream
   private long offset;
   // how much data has been ingested into the stream
   private long writeOffset;
+
+  private Runnable preCommit = () -> {
+  };
+
+  @Override
+  public void setPreCommit(@Nonnull Runnable preCommit) {
+    this.preCommit = preCommit;
+  }
 
   @VisibleForTesting
   public void insertFlushCheckpoint(long version) throws IOException {
@@ -485,6 +494,7 @@ public final class ECKeyOutputStream extends KeyOutputStream
               "Expected: %d and actual %d write sizes do not match",
                   expectedSize, offset));
         }
+        preCommit.run();
         blockOutputStreamEntryPool.commitKey(offset);
       }
     } catch (ExecutionException e) {

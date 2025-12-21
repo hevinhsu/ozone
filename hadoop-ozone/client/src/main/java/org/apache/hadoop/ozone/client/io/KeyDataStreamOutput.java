@@ -19,6 +19,7 @@ package org.apache.hadoop.ozone.client.io;
 
 import com.google.common.annotations.VisibleForTesting;
 import com.google.common.base.Preconditions;
+import jakarta.annotation.Nonnull;
 import java.io.IOException;
 import java.nio.ByteBuffer;
 import java.util.Collection;
@@ -81,6 +82,13 @@ public class KeyDataStreamOutput extends AbstractDataStreamOutput
    * This is essential for operations like S3 put to ensure atomicity.
    */
   private boolean atomicKeyCreation;
+
+  private Runnable preCommit = () -> {
+  };
+
+  public void setPreCommit(@Nonnull Runnable preCommit) {
+    this.preCommit = preCommit;
+  }
 
   @VisibleForTesting
   public List<BlockDataStreamOutputEntry> getStreamEntries() {
@@ -431,6 +439,7 @@ public class KeyDataStreamOutput extends AbstractDataStreamOutput
             String.format("Expected: %d and actual %d write sizes do not match",
                 expectedSize, offset));
       }
+      preCommit.run();
       blockDataStreamOutputEntryPool.commitKey(offset);
     } finally {
       blockDataStreamOutputEntryPool.cleanup();
