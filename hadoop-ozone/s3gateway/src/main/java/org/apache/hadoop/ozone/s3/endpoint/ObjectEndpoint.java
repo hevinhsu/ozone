@@ -352,8 +352,9 @@ public class ObjectEndpoint extends EndpointBase {
             final String actualSha256 = DatatypeConverter.printHexBinary(
                 sha256Digest.digest()).toLowerCase();
             output.getKeyOutputStream().setPreCommit(() -> {
-              Preconditions.checkArgument(amzContentSha256Header.equals(actualSha256),
-                  S3ErrorTable.X_AMZ_CONTENT_SHA256_MISMATCH.getErrorMessage());
+                  if (!amzContentSha256Header.equals(actualSha256)) {
+                    S3ErrorTable.newError(S3ErrorTable.X_AMZ_CONTENT_SHA256_MISMATCH, keyPath);
+                  }
                 }
             );
           }
