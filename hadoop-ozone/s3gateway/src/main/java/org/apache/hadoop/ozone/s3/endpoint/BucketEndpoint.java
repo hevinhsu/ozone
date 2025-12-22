@@ -506,6 +506,9 @@ public class BucketEndpoint extends EndpointBase {
         }
         getMetrics().updateDeleteKeySuccessStats(startNanos);
       } catch (IOException ex) {
+        if (((OS3Exception) ex).getErrorMessage().equals(S3ErrorTable.BUCKET_OWNER_MISMATCH.getErrorMessage())) {
+          throw ex;
+        }
         LOG.error("Delete key failed: {}", ex.getMessage());
         getMetrics().updateDeleteKeyFailureStats(startNanos);
         result.addError(
