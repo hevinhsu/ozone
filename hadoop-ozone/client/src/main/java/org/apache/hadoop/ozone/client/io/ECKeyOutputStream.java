@@ -48,6 +48,7 @@ import org.apache.hadoop.ozone.om.protocol.S3Auth;
 import org.apache.ozone.erasurecode.rawcoder.RawErasureEncoder;
 import org.apache.ozone.erasurecode.rawcoder.util.CodecUtil;
 import org.apache.ratis.thirdparty.com.google.protobuf.ByteString;
+import org.apache.ratis.util.function.CheckedRunnable;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -87,11 +88,11 @@ public final class ECKeyOutputStream extends KeyOutputStream
   // how much data has been ingested into the stream
   private long writeOffset;
 
-  private Runnable preCommit = () -> {
+  private CheckedRunnable<IOException> preCommit = () -> {
   };
 
   @Override
-  public void setPreCommit(@Nonnull Runnable preCommit) {
+  public void setPreCommit(@Nonnull CheckedRunnable<IOException> preCommit) {
     this.preCommit = preCommit;
   }
 

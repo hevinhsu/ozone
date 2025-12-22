@@ -111,10 +111,10 @@ public class KeyOutputStream extends OutputStream
 
   private final int maxConcurrentWritePerKey;
   private final KeyOutputStreamSemaphore keyOutputStreamSemaphore;
-  private Runnable preCommit = () -> {
+  private CheckedRunnable<IOException> preCommit = () -> {
   };
 
-  public void setPreCommit(@Nonnull Runnable preCommit) {
+  public void setPreCommit(@Nonnull CheckedRunnable<IOException> preCommit) {
     this.preCommit = preCommit;
   }
 

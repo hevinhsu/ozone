@@ -45,6 +45,7 @@ import org.apache.hadoop.ozone.om.helpers.OmKeyLocationInfoGroup;
 import org.apache.hadoop.ozone.om.helpers.OmMultipartCommitUploadPartInfo;
 import org.apache.hadoop.ozone.om.helpers.OpenKeySession;
 import org.apache.hadoop.ozone.om.protocol.OzoneManagerProtocol;
+import org.apache.ratis.util.function.CheckedRunnable;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -83,10 +84,10 @@ public class KeyDataStreamOutput extends AbstractDataStreamOutput
    */
   private boolean atomicKeyCreation;
 
-  private Runnable preCommit = () -> {
+  private CheckedRunnable<IOException> preCommit = () -> {
   };
 
-  public void setPreCommit(@Nonnull Runnable preCommit) {
+  public void setPreCommit(@Nonnull CheckedRunnable<IOException> preCommit) {
     this.preCommit = preCommit;
   }
 

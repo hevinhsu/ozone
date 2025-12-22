@@ -129,7 +129,7 @@ final class ObjectEndpointStreaming {
             sha256Digest.digest()).toLowerCase();
         streamOutput.getKeyDataStreamOutput().setPreCommit(() -> {
               if (!amzContentSha256Header.equals(actualSha256)) {
-                S3ErrorTable.newError(S3ErrorTable.X_AMZ_CONTENT_SHA256_MISMATCH, keyPath);
+                throw S3ErrorTable.newError(S3ErrorTable.X_AMZ_CONTENT_SHA256_MISMATCH, keyPath);
               }
             }
         );
