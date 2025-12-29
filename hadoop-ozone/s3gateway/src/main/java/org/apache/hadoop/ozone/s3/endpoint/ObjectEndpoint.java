@@ -76,6 +76,7 @@ import java.time.Instant;
 import java.time.ZoneId;
 import java.time.ZonedDateTime;
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -180,7 +181,7 @@ public class ObjectEndpoint extends EndpointBase {
 
   /*FOR the feature Overriding Response Header
   https://docs.aws.amazon.com/de_de/AmazonS3/latest/API/API_GetObject.html */
-  private Map<String, String> overrideQueryParameter;
+  private final Map<String, String> overrideQueryParameter;
   private int bufferSize;
   private int chunkSize;
   private boolean datastreamEnabled;
@@ -351,11 +352,11 @@ public class ObjectEndpoint extends EndpointBase {
           if (sha256Digest != null) {
             final String actualSha256 = DatatypeConverter.printHexBinary(
                 sha256Digest.digest()).toLowerCase();
-            output.getKeyOutputStream().setPreCommit(() -> {
+            Runnable preCommit = () -> {
               Preconditions.checkArgument(amzContentSha256Header.equals(actualSha256),
                   S3ErrorTable.X_AMZ_CONTENT_SHA256_MISMATCH.getErrorMessage());
-                }
-            );
+            };
+            output.getKeyOutputStream().setPreCommits(Collections.singletonList(preCommit));
           }
         }
       }
