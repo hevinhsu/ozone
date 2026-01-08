@@ -714,7 +714,6 @@ public final class OzoneBucketStub extends OzoneBucket {
     public KeyMetadataAwareOutputStream(int size,
                                         Map<String, String> metadata) {
       super(null, null);
-      this.buffer.reset();
       this.metadata = metadata;
     }
 

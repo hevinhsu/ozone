@@ -349,7 +349,6 @@ public class ObjectEndpoint extends EndpointBase {
             };
             preCommits.add(checkContentMD5Hook);
           }
-          ;
 
           // If sha256Digest exists, this request must validate x-amz-content-sha256
           MessageDigest sha256Digest = multiDigestInputStream.getMessageDigest(OzoneConsts.FILE_HASH);
