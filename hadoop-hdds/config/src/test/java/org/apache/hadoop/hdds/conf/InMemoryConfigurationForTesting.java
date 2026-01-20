@@ -17,20 +17,42 @@
 
 package org.apache.hadoop.hdds.conf;
 
+import java.io.IOException;
+import java.util.Collection;
+import java.util.HashMap;
+import java.util.Map;
+
 /**
- * Parent class for the example configuration.
+ * In memory, mutable configuration source for testing.
  */
-public class SimpleConfigurationParent extends ReconfigurableConfig {
+public class InMemoryConfigurationForTesting implements MutableConfigurationSource {
 
-  @Config(key = "enabled", defaultValue = "true", description = "Example "
-      + "boolean config.", tags = ConfigTag.MANAGEMENT)
-  private boolean enabled;
+  private Map<String, String> configs = new HashMap<>();
 
-  public boolean isEnabled() {
-    return enabled;
+  public InMemoryConfigurationForTesting() {
   }
 
-  public void setEnabled(boolean enabled) {
-    this.enabled = enabled;
+  public InMemoryConfigurationForTesting(String key, String value) {
+    set(key, value);
+  }
+
+  @Override
+  public String get(String key) {
+    return configs.get(key);
+  }
+
+  @Override
+  public Collection<String> getConfigKeys() {
+    return configs.keySet();
+  }
+
+  @Override
+  public char[] getPassword(String key) throws IOException {
+    return configs.get(key).toCharArray();
+  }
+
+  @Override
+  public void set(String key, String value) {
+    configs.put(key, value);
   }
 }
