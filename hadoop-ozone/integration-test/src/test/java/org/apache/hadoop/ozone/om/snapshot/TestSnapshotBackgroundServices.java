@@ -112,6 +112,13 @@ public class TestSnapshotBackgroundServices {
   private static final String SNAPSHOT_NAME_PREFIX = "snapshot-";
   private static final String KEY_NAME_PREFIX = "key-";
   private static final AtomicInteger counter = new AtomicInteger();
+
+  // Compaction DAG prune daemon run interval (in seconds)
+  // (Used by: testBackupCompactionFilesPruningBackgroundService)
+  // Note: Set to 30 seconds to balance between:
+  //   - Preventing race conditions when sharing cluster across tests
+  //   - Not making tests too slow (testBackupCompactionFilesPruningBackgroundService waits for this)
+  // WARNING: If set too short (e.g., 5s), may cause compaction DAG sync issues in testCompactionLogBackgroundService
   private static final int PURGE_INTERVAL_SECOND = 30;
 
 
@@ -130,13 +137,27 @@ public class TestSnapshotBackgroundServices {
     conf.setInt(OMConfigKeys.OZONE_OM_RATIS_LOG_PURGE_GAP, LOG_PURGE_GAP);
     conf.setStorageSize(OMConfigKeys.OZONE_OM_RATIS_SEGMENT_SIZE_KEY, 16, StorageUnit.KB);
     conf.setStorageSize(OMConfigKeys.OZONE_OM_RATIS_SEGMENT_PREALLOCATED_SIZE_KEY, 16, StorageUnit.KB);
-
-    // Enable all background services with short intervals
+    
+    // SST Filtering Service (Used by: testSSTFilteringBackgroundService)
     conf.setTimeDuration(OZONE_SNAPSHOT_SST_FILTERING_SERVICE_INTERVAL, 1, TimeUnit.SECONDS);
+
+    // Compaction DAG Configuration (Used by: testCompactionLogBackgroundService,
+    //                                         testBackupCompactionFilesPruningBackgroundService,
+    //                                         testSnapshotAndKeyDeletionBackgroundServices)
+    // Max time allowed for entries to stay in compaction DAG before being pruned
     conf.setTimeDuration(OZONE_OM_SNAPSHOT_COMPACTION_DAG_MAX_TIME_ALLOWED, 1, TimeUnit.MILLISECONDS);
-    // 這個值目前有問題，會因為電腦測試速度不同而有影響，目前的策略：時間調長一點，讓資料慢一點被清掉，卻又不至於快到影響其他測試
-    conf.setTimeDuration(OZONE_OM_SNAPSHOT_COMPACTION_DAG_PRUNE_DAEMON_RUN_INTERVAL, PURGE_INTERVAL_SECOND, TimeUnit.SECONDS);
+
+    // Compaction DAG Prune Daemon Interval
+    // NOTE: Only testCompactionLogBackgroundService does NOT need this value.
+    // For other tests, if this value is set too low, compaction DAG/log data will be cleaned up too quickly,
+    // causing test failures due to missing data. Therefore, this value is set high to ensure all tests pass reliably
+    // when sharing the cluster. Adjust with caution: lowering this interval may cause flaky tests.
+    conf.setTimeDuration(OZONE_OM_SNAPSHOT_COMPACTION_DAG_PRUNE_DAEMON_RUN_INTERVAL,
+        PURGE_INTERVAL_SECOND, TimeUnit.SECONDS);
+
+    // Block Deleting Service (Used by: testSnapshotAndKeyDeletionBackgroundServices)
     conf.setTimeDuration(OZONE_BLOCK_DELETING_SERVICE_INTERVAL, 1, TimeUnit.SECONDS);
+    // Snapshot Deleting Service (Used by: testSnapshotAndKeyDeletionBackgroundServices)
     conf.setTimeDuration(OZONE_SNAPSHOT_DELETING_SERVICE_INTERVAL, 1, TimeUnit.SECONDS);
 
     conf.setLong(
