@@ -170,7 +170,10 @@ public class TestSnapshotBackgroundServices {
         .setNumOfActiveOMs(numOfOMs)
         .build();
 
-    // close one OM to simulate inactive OM
+    // close one OM to simulate inactive OM for later tests.
+    // NOTE: We stop one OM here so that all later tests can uniformly use
+    // cluster.restartOzoneManager() to start the inactive OM.
+    // This avoids the need to distinguish between first-time start and restart.
     String inactiveOMNodeId = cluster.getOzoneManagersList().get(2).getOMNodeId();
     cluster.stopOzoneManager(inactiveOMNodeId);
 
