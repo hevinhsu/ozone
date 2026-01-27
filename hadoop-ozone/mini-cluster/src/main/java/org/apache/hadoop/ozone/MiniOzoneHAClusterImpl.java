@@ -125,6 +125,10 @@ public class MiniOzoneHAClusterImpl extends MiniOzoneClusterImpl {
     return scmhaService.inactiveServices();
   }
 
+  public Iterator<OzoneManager> getInactiveOM() {
+    return omhaService.inactiveServices();
+  }
+
   public StorageContainerManager getSCM(String scmNodeId) {
     return this.scmhaService.getServiceById(scmNodeId);
   }

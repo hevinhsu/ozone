@@ -113,14 +113,6 @@ public class TestSnapshotBackgroundServices {
   private static final String KEY_NAME_PREFIX = "key-";
   private static final AtomicInteger counter = new AtomicInteger();
 
-  // Compaction DAG prune daemon run interval (in seconds)
-  // (Used by: testBackupCompactionFilesPruningBackgroundService)
-  // Note: Set to 30 seconds to balance between:
-  //   - Preventing race conditions when sharing cluster across tests
-  //   - Not making tests too slow (testBackupCompactionFilesPruningBackgroundService waits for this)
-  // WARNING: If set too short (e.g., 5s), may cause compaction DAG sync issues in testCompactionLogBackgroundService
-  private static final int PURGE_INTERVAL_SECOND = 30;
-
 
   @BeforeAll
   public static void init() throws Exception {
@@ -138,26 +130,19 @@ public class TestSnapshotBackgroundServices {
     conf.setStorageSize(OMConfigKeys.OZONE_OM_RATIS_SEGMENT_SIZE_KEY, 16, StorageUnit.KB);
     conf.setStorageSize(OMConfigKeys.OZONE_OM_RATIS_SEGMENT_PREALLOCATED_SIZE_KEY, 16, StorageUnit.KB);
     
-    // SST Filtering Service (Used by: testSSTFilteringBackgroundService)
+    // Used by: testSSTFilteringBackgroundService
     conf.setTimeDuration(OZONE_SNAPSHOT_SST_FILTERING_SERVICE_INTERVAL, 1, TimeUnit.SECONDS);
 
-    // Compaction DAG Configuration (Used by: testCompactionLogBackgroundService,
-    //                                         testBackupCompactionFilesPruningBackgroundService,
-    //                                         testSnapshotAndKeyDeletionBackgroundServices)
-    // Max time allowed for entries to stay in compaction DAG before being pruned
+    // Used by: testCompactionLogBackgroundService, testBackupCompactionFilesPruningBackgroundService,
+    //                                         testSnapshotAndKeyDeletionBackgroundServices
     conf.setTimeDuration(OZONE_OM_SNAPSHOT_COMPACTION_DAG_MAX_TIME_ALLOWED, 1, TimeUnit.MILLISECONDS);
 
-    // Compaction DAG Prune Daemon Interval
-    // NOTE: Only testCompactionLogBackgroundService does NOT need this value.
-    // For other tests, if this value is set too low, compaction DAG/log data will be cleaned up too quickly,
-    // causing test failures due to missing data. Therefore, this value is set high to ensure all tests pass reliably
-    // when sharing the cluster. Adjust with caution: lowering this interval may cause flaky tests.
-    conf.setTimeDuration(OZONE_OM_SNAPSHOT_COMPACTION_DAG_PRUNE_DAEMON_RUN_INTERVAL,
-        PURGE_INTERVAL_SECOND, TimeUnit.SECONDS);
+    // Used by: testCompactionLogBackgroundService, testBackupCompactionFilesPruningBackgroundService
+    conf.setTimeDuration(OZONE_OM_SNAPSHOT_COMPACTION_DAG_PRUNE_DAEMON_RUN_INTERVAL, 5, TimeUnit.SECONDS);
 
-    // Block Deleting Service (Used by: testSnapshotAndKeyDeletionBackgroundServices)
+    // Used by: testSnapshotAndKeyDeletionBackgroundServices
     conf.setTimeDuration(OZONE_BLOCK_DELETING_SERVICE_INTERVAL, 1, TimeUnit.SECONDS);
-    // Snapshot Deleting Service (Used by: testSnapshotAndKeyDeletionBackgroundServices)
+    // Used by: testSnapshotAndKeyDeletionBackgroundServices
     conf.setTimeDuration(OZONE_SNAPSHOT_DELETING_SERVICE_INTERVAL, 1, TimeUnit.SECONDS);
 
     conf.setLong(
@@ -395,27 +380,35 @@ public class TestSnapshotBackgroundServices {
   }
 
   private OzoneManager getInactiveFollowerOM(OzoneManager leaderOM) {
-    String followerNodeId = leaderOM.getPeerNodes().get(0).getNodeId();
-    if (cluster.isOMActive(followerNodeId)) {
-      followerNodeId = leaderOM.getPeerNodes().get(1).getNodeId();
-    }
-    return cluster.getOzoneManager(followerNodeId);
+//    String followerNodeId = leaderOM.getPeerNodes().get(0).getNodeId();
+//    if (cluster.isOMActive(followerNodeId)) {
+//      followerNodeId = leaderOM.getPeerNodes().get(1).getNodeId();
+//    }
+//    return cluster.getOzoneManager(followerNodeId);
+    return cluster.getInactiveOM().next();
   }
 
   private OzoneManager getLeaderOM() {
-    final String leaderOMNodeId = OmTestUtil.getCurrentOmProxyNodeId(objectStore);
-    return cluster.getOzoneManager(leaderOMNodeId);
+//    final String leaderOMNodeId = OmTestUtil.getCurrentOmProxyNodeId(objectStore);
+//    return cluster.getOzoneManager(leaderOMNodeId);
+    return cluster.getOMLeader();
   }
 
   @Test
   @DisplayName("testCompactionLogBackgroundService")
   @Flaky("HDDS-11672")
-  @Order(1)
+  @Order(Integer.MAX_VALUE)
   public void testCompactionLogBackgroundService()
       throws IOException, InterruptedException, TimeoutException {
+
+    restartOzoneManagersWithExtendedPruneInterval();
+
     OzoneManager leaderOM = getLeaderOM();
     OzoneManager followerOM = getInactiveFollowerOM(leaderOM);
 
+    if(leaderOM == null) {
+      throw new OMLeaderNotReadyException("Leader OM is not ready");
+    }
     createSnapshotsEachWithNewKeys(leaderOM);
 
     startInactiveFollower(leaderOM, followerOM,
@@ -484,6 +477,25 @@ public class TestSnapshotBackgroundServices {
         compactionLogEntriesOnNewLeader);
 
     confirmSnapDiffForTwoSnapshotsDifferingBySingleKey(newLeaderOM);
+  }
+
+  private static void restartOzoneManagersWithExtendedPruneInterval() throws IOException, TimeoutException, InterruptedException {
+    for (OzoneManager om : cluster.getOzoneManagersList()) {
+      OzoneConfiguration configuration = new OzoneConfiguration(om.getConfiguration());
+      // recover to default value to prevent side effect
+      configuration.setTimeDuration(OZONE_OM_SNAPSHOT_COMPACTION_DAG_PRUNE_DAEMON_RUN_INTERVAL, 10, TimeUnit.MINUTES);
+      om.setConfiguration(configuration);
+
+      if(!om.isRunning()) {
+        continue;
+      }
+      if(om.stop()) {
+        om.join();
+      }
+      om.restart();
+      GenericTestUtils.waitFor(om::isRunning, 1000, 30000);
+    }
+    cluster.waitForLeaderOM();
   }
 
   private List<CompactionLogEntry> getCompactionLogEntries(OzoneManager om)
@@ -613,7 +625,7 @@ public class TestSnapshotBackgroundServices {
       int newNumberOfSstFiles = Objects.requireNonNull(
           sstBackupDir.listFiles()).length;
       return numberOfSstFiles > newNumberOfSstFiles;
-    }, 1000, PURGE_INTERVAL_SECOND * 1000 + 5000);
+    }, 1000, 10000);
   }
 
   private static File getSstBackupDir(OzoneManager ozoneManager) {
