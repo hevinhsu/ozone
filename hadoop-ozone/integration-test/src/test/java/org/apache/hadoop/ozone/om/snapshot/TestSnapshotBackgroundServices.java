@@ -380,17 +380,10 @@ public class TestSnapshotBackgroundServices {
   }
 
   private OzoneManager getInactiveFollowerOM(OzoneManager leaderOM) {
-//    String followerNodeId = leaderOM.getPeerNodes().get(0).getNodeId();
-//    if (cluster.isOMActive(followerNodeId)) {
-//      followerNodeId = leaderOM.getPeerNodes().get(1).getNodeId();
-//    }
-//    return cluster.getOzoneManager(followerNodeId);
     return cluster.getInactiveOM().next();
   }
 
   private OzoneManager getLeaderOM() {
-//    final String leaderOMNodeId = OmTestUtil.getCurrentOmProxyNodeId(objectStore);
-//    return cluster.getOzoneManager(leaderOMNodeId);
     return cluster.getOMLeader();
   }
 
@@ -486,12 +479,11 @@ public class TestSnapshotBackgroundServices {
       configuration.setTimeDuration(OZONE_OM_SNAPSHOT_COMPACTION_DAG_PRUNE_DAEMON_RUN_INTERVAL, 10, TimeUnit.MINUTES);
       om.setConfiguration(configuration);
 
-      if(!om.isRunning()) {
+      if(!om.isRunning() || !om.stop()) {
         continue;
       }
-      if(om.stop()) {
-        om.join();
-      }
+
+      om.join();
       om.restart();
       GenericTestUtils.waitFor(om::isRunning, 1000, 30000);
     }
