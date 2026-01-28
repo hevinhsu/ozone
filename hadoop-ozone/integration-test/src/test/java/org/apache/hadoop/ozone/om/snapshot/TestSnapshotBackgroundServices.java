@@ -63,7 +63,6 @@ import org.apache.hadoop.ozone.client.VolumeArgs;
 import org.apache.hadoop.ozone.conf.OMClientConfig;
 import org.apache.hadoop.ozone.om.OMConfigKeys;
 import org.apache.hadoop.ozone.om.OmSnapshot;
-import org.apache.hadoop.ozone.om.OmTestUtil;
 import org.apache.hadoop.ozone.om.OzoneManager;
 import org.apache.hadoop.ozone.om.SstFilteringService;
 import org.apache.hadoop.ozone.om.exceptions.OMLeaderNotReadyException;
@@ -79,7 +78,6 @@ import org.apache.ozone.rocksdiff.CompactionNode;
 import org.apache.ozone.test.GenericTestUtils;
 import org.apache.ozone.test.LambdaTestUtils;
 import org.apache.ozone.test.tag.Flaky;
-import org.apache.ratis.protocol.RaftGroup;
 import org.apache.ratis.server.protocol.TermIndex;
 import org.apache.ratis.util.function.UncheckedAutoCloseableSupplier;
 import org.junit.jupiter.api.AfterAll;
@@ -111,8 +109,7 @@ public class TestSnapshotBackgroundServices {
   private static final BucketLayout TEST_BUCKET_LAYOUT = BucketLayout.OBJECT_STORE;
   private static final String SNAPSHOT_NAME_PREFIX = "snapshot-";
   private static final String KEY_NAME_PREFIX = "key-";
-  private static final AtomicInteger counter = new AtomicInteger();
-
+  private static final AtomicInteger COUNTER = new AtomicInteger();
 
   @BeforeAll
   public static void init() throws Exception {
@@ -170,12 +167,12 @@ public class TestSnapshotBackgroundServices {
   @BeforeEach
   public void setupTest() throws IOException {
     // Create unique volume and bucket for each test
-    volumeName = "volume" + counter.incrementAndGet();
-    bucketName = "bucket" + counter.incrementAndGet();
+    volumeName = "volume" + COUNTER.incrementAndGet();
+    bucketName = "bucket" + COUNTER.incrementAndGet();
 
     VolumeArgs createVolumeArgs = VolumeArgs.newBuilder()
-        .setOwner("user" + counter.incrementAndGet())
-        .setAdmin("admin" + counter.incrementAndGet())
+        .setOwner("user" + COUNTER.incrementAndGet())
+        .setAdmin("admin" + COUNTER.incrementAndGet())
         .build();
 
     objectStore.createVolume(volumeName, createVolumeArgs);
@@ -237,7 +234,7 @@ public class TestSnapshotBackgroundServices {
         cluster.getOzoneManager(leaderOM.getOMNodeId());
     assertEquals(leaderOM, newFollowerOM);
 
-    SnapshotInfo newSnapshot = createOzoneSnapshot(newLeaderOM, SNAPSHOT_NAME_PREFIX + counter.incrementAndGet());
+    SnapshotInfo newSnapshot = createOzoneSnapshot(newLeaderOM, SNAPSHOT_NAME_PREFIX + COUNTER.incrementAndGet());
 
     /*
       Check whether newly created key data is reclaimed
@@ -262,7 +259,7 @@ public class TestSnapshotBackgroundServices {
     assertNotNull(keyInfoA);
 
     // create snapshot b
-    SnapshotInfo snapshotInfoB = createOzoneSnapshot(newLeaderOM, SNAPSHOT_NAME_PREFIX + counter.incrementAndGet());
+    SnapshotInfo snapshotInfoB = createOzoneSnapshot(newLeaderOM, SNAPSHOT_NAME_PREFIX + COUNTER.incrementAndGet());
     assertNotNull(snapshotInfoB);
 
     // delete key a
@@ -272,7 +269,7 @@ public class TestSnapshotBackgroundServices {
         () -> !isKeyInTable(keyA, omKeyInfoTable));
 
     // create snapshot c
-    SnapshotInfo snapshotInfoC = createOzoneSnapshot(newLeaderOM, SNAPSHOT_NAME_PREFIX + counter.incrementAndGet());
+    SnapshotInfo snapshotInfoC = createOzoneSnapshot(newLeaderOM, SNAPSHOT_NAME_PREFIX + COUNTER.incrementAndGet());
 
     // get snapshot c
     OmSnapshot snapC;
@@ -288,7 +285,7 @@ public class TestSnapshotBackgroundServices {
         () -> isKeyInTable(keyA, snapC.getMetadataManager().getDeletedTable()));
 
     // create snapshot d
-    SnapshotInfo snapshotInfoD = createOzoneSnapshot(newLeaderOM, SNAPSHOT_NAME_PREFIX + counter.incrementAndGet());
+    SnapshotInfo snapshotInfoD = createOzoneSnapshot(newLeaderOM, SNAPSHOT_NAME_PREFIX + COUNTER.incrementAndGet());
 
     // delete snapshot c
     client.getObjectStore()
@@ -399,7 +396,7 @@ public class TestSnapshotBackgroundServices {
     OzoneManager leaderOM = getLeaderOM();
     OzoneManager followerOM = getInactiveFollowerOM(leaderOM);
 
-    if(leaderOM == null) {
+    if (leaderOM == null) {
       throw new OMLeaderNotReadyException("Leader OM is not ready");
     }
     createSnapshotsEachWithNewKeys(leaderOM);
@@ -472,14 +469,15 @@ public class TestSnapshotBackgroundServices {
     confirmSnapDiffForTwoSnapshotsDifferingBySingleKey(newLeaderOM);
   }
 
-  private static void restartOzoneManagersWithExtendedPruneInterval() throws IOException, TimeoutException, InterruptedException {
+  private static void restartOzoneManagersWithExtendedPruneInterval()
+      throws IOException, TimeoutException, InterruptedException {
     for (OzoneManager om : cluster.getOzoneManagersList()) {
       OzoneConfiguration configuration = new OzoneConfiguration(om.getConfiguration());
       // recover to default value to prevent side effect
       configuration.setTimeDuration(OZONE_OM_SNAPSHOT_COMPACTION_DAG_PRUNE_DAEMON_RUN_INTERVAL, 10, TimeUnit.MINUTES);
       om.setConfiguration(configuration);
 
-      if(!om.isRunning() || !om.stop()) {
+      if (!om.isRunning() || !om.stop()) {
         continue;
       }
 
@@ -513,7 +511,8 @@ public class TestSnapshotBackgroundServices {
     OzoneManager leaderOM = getLeaderOM();
     OzoneManager followerOM = getInactiveFollowerOM(leaderOM);
     // init
-    cluster.getOzoneManagersList().stream().filter(om -> !om.getOMNodeId().equals(followerOM.getOMNodeId())).forEach(TestSnapshotBackgroundServices::suspendBackupCompactionFilesPruning);
+    cluster.getOzoneManagersList().stream().filter(om -> !om.getOMNodeId().equals(followerOM.getOMNodeId()))
+        .forEach(TestSnapshotBackgroundServices::suspendBackupCompactionFilesPruning);
 
     try {
 
@@ -598,10 +597,10 @@ public class TestSnapshotBackgroundServices {
   private void confirmSnapDiffForTwoSnapshotsDifferingBySingleKey(
       OzoneManager ozoneManager)
       throws IOException, InterruptedException, TimeoutException {
-    String firstSnapshot = createOzoneSnapshot(ozoneManager, SNAPSHOT_NAME_PREFIX + counter.incrementAndGet())
+    String firstSnapshot = createOzoneSnapshot(ozoneManager, SNAPSHOT_NAME_PREFIX + COUNTER.incrementAndGet())
         .getName();
     String diffKey = writeKeys(1).get(0);
-    String secondSnapshot = createOzoneSnapshot(ozoneManager, SNAPSHOT_NAME_PREFIX + counter.incrementAndGet())
+    String secondSnapshot = createOzoneSnapshot(ozoneManager, SNAPSHOT_NAME_PREFIX + COUNTER.incrementAndGet())
         .getName();
     SnapshotDiffReportOzone diff = getSnapDiffReport(volumeName, bucketName, firstSnapshot, secondSnapshot);
     assertEquals(Collections.singletonList(
@@ -635,7 +634,7 @@ public class TestSnapshotBackgroundServices {
   private void checkIfSnapshotGetsProcessedBySFS(OzoneManager ozoneManager)
       throws IOException, TimeoutException, InterruptedException {
     writeKeys(1);
-    SnapshotInfo newSnapshot = createOzoneSnapshot(ozoneManager, SNAPSHOT_NAME_PREFIX + counter.incrementAndGet());
+    SnapshotInfo newSnapshot = createOzoneSnapshot(ozoneManager, SNAPSHOT_NAME_PREFIX + COUNTER.incrementAndGet());
     assertNotNull(newSnapshot);
     Table<String, SnapshotInfo> snapshotInfoTable =
         ozoneManager.getMetadataManager().getSnapshotInfoTable();
@@ -723,7 +722,7 @@ public class TestSnapshotBackgroundServices {
     List<String> keys = new ArrayList<>();
     long index = 0;
     while (index < keyCount) {
-      String key = KEY_NAME_PREFIX + counter.incrementAndGet();
+      String key = KEY_NAME_PREFIX + COUNTER.incrementAndGet();
       createKey(ozoneBucket, key);
       keys.add(key);
       index++;
