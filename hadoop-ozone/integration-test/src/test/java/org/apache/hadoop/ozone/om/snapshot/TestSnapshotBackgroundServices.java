@@ -492,12 +492,7 @@ public class TestSnapshotBackgroundServices {
     }
     cluster.waitForLeaderOM();
   }
-
-  // 保留原本無參數版本，轉呼叫新版，方便現有測試不需大改
-  private void restartOzoneManagersWithConfigCustomizer() throws IOException, TimeoutException, InterruptedException {
-    restartOzoneManagersWithConfigCustomizer(null);
-  }
-
+  
   private List<CompactionLogEntry> getCompactionLogEntries(OzoneManager om)
       throws IOException {
     List<CompactionLogEntry> compactionLogEntries = new ArrayList<>();
