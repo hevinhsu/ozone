@@ -44,6 +44,7 @@ import java.util.concurrent.TimeoutException;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.concurrent.atomic.AtomicReference;
+import java.util.function.Consumer;
 import org.apache.commons.io.IOUtils;
 import org.apache.hadoop.hdds.conf.OzoneConfiguration;
 import org.apache.hadoop.hdds.conf.StorageUnit;
@@ -391,7 +392,10 @@ public class TestSnapshotBackgroundServices {
   public void testCompactionLogBackgroundService()
       throws IOException, InterruptedException, TimeoutException {
 
-    restartOzoneManagersWithExtendedPruneInterval();
+    // recover to default value to prevent side effect
+    restartOzoneManagersWithConfigCustomizer(config -> {
+      config.setTimeDuration(OZONE_OM_SNAPSHOT_COMPACTION_DAG_PRUNE_DAEMON_RUN_INTERVAL, 10, TimeUnit.MINUTES);
+    });
 
     OzoneManager leaderOM = getLeaderOM();
     OzoneManager followerOM = getInactiveFollowerOM(leaderOM);
@@ -469,12 +473,13 @@ public class TestSnapshotBackgroundServices {
     confirmSnapDiffForTwoSnapshotsDifferingBySingleKey(newLeaderOM);
   }
 
-  private static void restartOzoneManagersWithExtendedPruneInterval()
+  private void restartOzoneManagersWithConfigCustomizer(Consumer<OzoneConfiguration> configCustomizer)
       throws IOException, TimeoutException, InterruptedException {
     for (OzoneManager om : cluster.getOzoneManagersList()) {
       OzoneConfiguration configuration = new OzoneConfiguration(om.getConfiguration());
-      // recover to default value to prevent side effect
-      configuration.setTimeDuration(OZONE_OM_SNAPSHOT_COMPACTION_DAG_PRUNE_DAEMON_RUN_INTERVAL, 10, TimeUnit.MINUTES);
+      if (configCustomizer != null) {
+        configCustomizer.accept(configuration);
+      }
       om.setConfiguration(configuration);
 
       if (!om.isRunning() || !om.stop()) {
@@ -486,6 +491,11 @@ public class TestSnapshotBackgroundServices {
       GenericTestUtils.waitFor(om::isRunning, 1000, 30000);
     }
     cluster.waitForLeaderOM();
+  }
+
+  // 保留原本無參數版本，轉呼叫新版，方便現有測試不需大改
+  private void restartOzoneManagersWithConfigCustomizer() throws IOException, TimeoutException, InterruptedException {
+    restartOzoneManagersWithConfigCustomizer(null);
   }
 
   private List<CompactionLogEntry> getCompactionLogEntries(OzoneManager om)
