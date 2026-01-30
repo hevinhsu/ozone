@@ -406,8 +406,10 @@ public class TestSnapshotBackgroundServices {
     }
     createSnapshotsEachWithNewKeys(leaderOM);
 
-    startInactiveFollower(leaderOM, followerOM,
-        () -> suspendBackupCompactionFilesPruning(followerOM));
+    try {
+
+      startInactiveFollower(leaderOM, followerOM,
+          () -> suspendBackupCompactionFilesPruning(followerOM));
 
       // Read & Write after snapshot installed.
       List<String> newKeys = writeKeys(1);
@@ -419,59 +421,39 @@ public class TestSnapshotBackgroundServices {
           cluster.getOzoneManager(leaderOM.getOMNodeId());
       assertEquals(leaderOM, newFollowerOM);
 
-    // Get expected nodes from previous leader
-    Set<String> expectedNodes = leaderOM.getMetadataManager().getStore()
-        .getRocksDBCheckpointDiffer().getForwardCompactionDAG().nodes()
-        .stream().map(CompactionNode::getFileName).collect(toSet());
+      List<CompactionLogEntry> compactionLogEntriesOnPreviousLeader =
+          getCompactionLogEntries(leaderOM);
 
-    // Wait for new leader to load compaction DAG
-    GenericTestUtils.waitFor(() -> {
-      Set<String> actualNodes = newLeaderOM.getMetadataManager().getStore()
+      List<CompactionLogEntry> compactionLogEntriesOnNewLeader =
+          getCompactionLogEntries(newLeaderOM);
+      assertEquals(compactionLogEntriesOnPreviousLeader,
+          compactionLogEntriesOnNewLeader);
+
+      assertEquals(leaderOM.getMetadataManager().getStore()
           .getRocksDBCheckpointDiffer().getForwardCompactionDAG().nodes()
-          .stream().map(CompactionNode::getFileName).collect(toSet());
-      return expectedNodes.equals(actualNodes);
-    }, 1000, 30000);
+          .stream().map(CompactionNode::getFileName).collect(toSet()),
+          newLeaderOM.getMetadataManager().getStore()
+              .getRocksDBCheckpointDiffer().getForwardCompactionDAG().nodes()
+              .stream().map(CompactionNode::getFileName).collect(toSet()));
 
-    // Verify nodes match
-    assertEquals(expectedNodes,
-        newLeaderOM.getMetadataManager().getStore()
-            .getRocksDBCheckpointDiffer().getForwardCompactionDAG().nodes()
-            .stream().map(CompactionNode::getFileName).collect(toSet()));
-
-    // Get expected edges from previous leader
-    Set<String> expectedEdges = leaderOM.getMetadataManager().getStore()
-        .getRocksDBCheckpointDiffer().getForwardCompactionDAG().edges()
-        .stream().map(edge ->
-            edge.source().getFileName() + "-" + edge.target().getFileName())
-        .collect(toSet());
-
-    // Wait for new leader to load compaction DAG edges
-    GenericTestUtils.waitFor(() -> {
-      Set<String> actualEdges = newLeaderOM.getMetadataManager().getStore()
+      assertEquals(leaderOM.getMetadataManager().getStore()
           .getRocksDBCheckpointDiffer().getForwardCompactionDAG().edges()
-          .stream().map(edge ->
-              edge.source().getFileName() + "-" + edge.target().getFileName())
-          .collect(toSet());
-      return expectedEdges.equals(actualEdges);
-    }, 1000, 30000);
+          .stream().map(edge1 ->
+              edge1.source().getFileName() + "-" + edge1.target().getFileName())
+          .collect(toSet()),
+          newLeaderOM.getMetadataManager().getStore()
+              .getRocksDBCheckpointDiffer().getForwardCompactionDAG().edges()
+              .stream().map(edge ->
+                  edge.source().getFileName() + "-" + edge.target().getFileName())
+              .collect(toSet()));
 
-    // Verify edges match
-    assertEquals(expectedEdges,
-        newLeaderOM.getMetadataManager().getStore()
-            .getRocksDBCheckpointDiffer().getForwardCompactionDAG().edges()
-            .stream().map(edge ->
-                edge.source().getFileName() + "-" + edge.target().getFileName())
-            .collect(toSet()));
-
-    List<CompactionLogEntry> compactionLogEntriesOnPreviousLeader =
-        getCompactionLogEntries(leaderOM);
-
-    List<CompactionLogEntry> compactionLogEntriesOnNewLeader =
-        getCompactionLogEntries(newLeaderOM);
-    assertEquals(compactionLogEntriesOnPreviousLeader,
-        compactionLogEntriesOnNewLeader);
-
-    confirmSnapDiffForTwoSnapshotsDifferingBySingleKey(newLeaderOM);
+      confirmSnapDiffForTwoSnapshotsDifferingBySingleKey(newLeaderOM);
+    } finally {
+      // recover - resume all OMs (including those that are not running)
+      cluster.getOzoneManagersList().stream()
+          .filter(OzoneManager::isRunning)
+          .forEach(TestSnapshotBackgroundServices::resumeBackupCompactionFilesPruning);
+    }
   }
 
   private void restartOzoneManagersWithConfigCustomizer(Consumer<OzoneConfiguration> configCustomizer)
@@ -521,12 +503,11 @@ public class TestSnapshotBackgroundServices {
     OzoneManager leaderOM = getLeaderOM();
     OzoneManager followerOM = getInactiveFollowerOM(leaderOM);
 
-    // Suspend all running OMs first (same as master's init() logic for this test)
-    cluster.getOzoneManagersList().stream()
-        .filter(OzoneManager::isRunning)
-        .forEach(TestSnapshotBackgroundServices::suspendBackupCompactionFilesPruning);
-
     try {
+      // Suspend all running OMs first (same as master's init() logic for this test)
+      cluster.getOzoneManagersList().stream()
+          .filter(OzoneManager::isRunning)
+          .forEach(TestSnapshotBackgroundServices::suspendBackupCompactionFilesPruning);
 
       startInactiveFollower(leaderOM, followerOM,
           () -> suspendBackupCompactionFilesPruning(followerOM));
