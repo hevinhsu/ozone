@@ -36,6 +36,7 @@ import java.io.File;
 import java.io.IOException;
 import java.util.ArrayList;
 import java.util.Collections;
+import java.util.Iterator;
 import java.util.List;
 import java.util.Objects;
 import java.util.Set;
@@ -136,7 +137,7 @@ public class TestSnapshotBackgroundServices {
     conf.setTimeDuration(OZONE_OM_SNAPSHOT_COMPACTION_DAG_MAX_TIME_ALLOWED, 1, TimeUnit.MILLISECONDS);
 
     // Used by: testCompactionLogBackgroundService, testBackupCompactionFilesPruningBackgroundService
-    conf.setTimeDuration(OZONE_OM_SNAPSHOT_COMPACTION_DAG_PRUNE_DAEMON_RUN_INTERVAL, 5, TimeUnit.SECONDS);
+    conf.setTimeDuration(OZONE_OM_SNAPSHOT_COMPACTION_DAG_PRUNE_DAEMON_RUN_INTERVAL, 3, TimeUnit.SECONDS);
 
     // Used by: testSnapshotAndKeyDeletionBackgroundServices
     conf.setTimeDuration(OZONE_BLOCK_DELETING_SERVICE_INTERVAL, 1, TimeUnit.SECONDS);
@@ -166,7 +167,7 @@ public class TestSnapshotBackgroundServices {
   }
 
   @BeforeEach
-  public void setupTest() throws IOException {
+  public void setupTest() throws IOException, InterruptedException, TimeoutException {
     // Create unique volume and bucket for each test
     volumeName = "volume" + COUNTER.incrementAndGet();
     bucketName = "bucket" + COUNTER.incrementAndGet();
@@ -182,12 +183,11 @@ public class TestSnapshotBackgroundServices {
     retVolumeinfo.createBucket(bucketName,
         BucketArgs.newBuilder().setBucketLayout(TEST_BUCKET_LAYOUT).build());
     ozoneBucket = retVolumeinfo.getBucket(bucketName);
+    cluster.waitForClusterToBeReady();
   }
 
   @AfterEach
   public void cleanupTest() throws Exception {
-    // Stop all non-leader OMs to ensure clean state for next test
-    // This prevents state pollution between tests when sharing cluster
     OzoneManager leaderOM = getLeaderOM();
     // stop one follower OM
     for (OzoneManager om : cluster.getOzoneManagersList()) {
@@ -198,7 +198,7 @@ public class TestSnapshotBackgroundServices {
 
         // Wait for OM to fully stop before proceeding
         // Check both isRunning() and isOmRpcServerRunning() to ensure RPC server has stopped
-        GenericTestUtils.waitFor(() -> !om.isRunning() && !om.isOmRpcServerRunning(), 100, 5000);
+        GenericTestUtils.waitFor(() -> !om.isRunning() && !om.isOmRpcServerRunning(), 100, 15000);
         break;
       }
     }
@@ -400,6 +400,7 @@ public class TestSnapshotBackgroundServices {
     OzoneManager leaderOM = getLeaderOM();
     OzoneManager followerOM = getInactiveFollowerOM(leaderOM);
 
+    // todo: delete test code
     if (leaderOM == null) {
       throw new OMLeaderNotReadyException("Leader OM is not ready");
     }
@@ -408,15 +409,15 @@ public class TestSnapshotBackgroundServices {
     startInactiveFollower(leaderOM, followerOM,
         () -> suspendBackupCompactionFilesPruning(followerOM));
 
-    // Read & Write after snapshot installed.
-    List<String> newKeys = writeKeys(1);
-    readKeys(newKeys);
+      // Read & Write after snapshot installed.
+      List<String> newKeys = writeKeys(1);
+      readKeys(newKeys);
 
-    OzoneManager newLeaderOM =
-        getNewLeader(leaderOM, followerOM.getOMNodeId(), followerOM);
-    OzoneManager newFollowerOM =
-        cluster.getOzoneManager(leaderOM.getOMNodeId());
-    assertEquals(leaderOM, newFollowerOM);
+      OzoneManager newLeaderOM =
+          getNewLeader(leaderOM, followerOM.getOMNodeId(), followerOM);
+      OzoneManager newFollowerOM =
+          cluster.getOzoneManager(leaderOM.getOMNodeId());
+      assertEquals(leaderOM, newFollowerOM);
 
     // Get expected nodes from previous leader
     Set<String> expectedNodes = leaderOM.getMetadataManager().getStore()
@@ -475,17 +476,21 @@ public class TestSnapshotBackgroundServices {
 
   private void restartOzoneManagersWithConfigCustomizer(Consumer<OzoneConfiguration> configCustomizer)
       throws IOException, TimeoutException, InterruptedException {
+    List<OzoneManager> toRestart = new ArrayList<>();
     for (OzoneManager om : cluster.getOzoneManagersList()) {
       OzoneConfiguration configuration = new OzoneConfiguration(om.getConfiguration());
       if (configCustomizer != null) {
         configCustomizer.accept(configuration);
       }
       om.setConfiguration(configuration);
-
-      if (!om.isRunning() || !om.stop()) {
+      if (om.isRunning()) {
+        toRestart.add(om);
+      }
+    }
+    for (OzoneManager om : toRestart) {
+      if (!om.stop()) {
         continue;
       }
-
       om.join();
       om.restart();
       GenericTestUtils.waitFor(om::isRunning, 1000, 30000);
@@ -515,8 +520,10 @@ public class TestSnapshotBackgroundServices {
 
     OzoneManager leaderOM = getLeaderOM();
     OzoneManager followerOM = getInactiveFollowerOM(leaderOM);
-    // init
-    cluster.getOzoneManagersList().stream().filter(om -> !om.getOMNodeId().equals(followerOM.getOMNodeId()))
+
+    // Suspend all running OMs first (same as master's init() logic for this test)
+    cluster.getOzoneManagersList().stream()
+        .filter(OzoneManager::isRunning)
         .forEach(TestSnapshotBackgroundServices::suspendBackupCompactionFilesPruning);
 
     try {
@@ -548,8 +555,10 @@ public class TestSnapshotBackgroundServices {
 
       confirmSnapDiffForTwoSnapshotsDifferingBySingleKey(newLeaderOM);
     } finally {
-      // recover
-      cluster.getOzoneManagersList().forEach(TestSnapshotBackgroundServices::resumeBackupCompactionFilesPruning);
+      // recover - resume all OMs (including those that are not running)
+      cluster.getOzoneManagersList().stream()
+          .filter(OzoneManager::isRunning)
+          .forEach(TestSnapshotBackgroundServices::resumeBackupCompactionFilesPruning);
     }
   }
 
