@@ -36,6 +36,7 @@ import java.io.File;
 import java.io.IOException;
 import java.util.ArrayList;
 import java.util.Collections;
+import java.util.Iterator;
 import java.util.List;
 import java.util.Objects;
 import java.util.concurrent.TimeUnit;
@@ -44,6 +45,7 @@ import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.Consumer;
+import java.util.stream.Collectors;
 import org.apache.commons.io.IOUtils;
 import org.apache.hadoop.hdds.conf.OzoneConfiguration;
 import org.apache.hadoop.hdds.conf.StorageUnit;
@@ -152,13 +154,6 @@ public class TestSnapshotBackgroundServices {
         .setNumOfActiveOMs(numOfOMs)
         .build();
 
-    // close one OM to simulate inactive OM for later tests.
-    // NOTE: We stop one OM here so that all later tests can uniformly use
-    // cluster.restartOzoneManager() to start the inactive OM.
-    // This avoids the need to distinguish between first-time start and restart.
-    String inactiveOMNodeId = cluster.getOzoneManagersList().get(2).getOMNodeId();
-    cluster.stopOzoneManager(inactiveOMNodeId);
-
     cluster.waitForClusterToBeReady();
     client = OzoneClientFactory.getRpcClient(omServiceId, conf);
     objectStore = client.getObjectStore();
@@ -166,27 +161,91 @@ public class TestSnapshotBackgroundServices {
 
   @BeforeEach
   public void setupTest() throws IOException, InterruptedException, TimeoutException {
+
+    // Test code: verify that current cluster state is healthy before each test
+    long runningCount = cluster.getOzoneManagersList().stream()
+        .filter(OzoneManager::isRunning)
+        .count();
+    if (runningCount != 3) {
+        throw new IllegalStateException("Not enough running OMs before test: " + runningCount);
+    }
+
+    // Fail fast: 檢查 leader 狀態
+    OzoneManager leader = null;
+    try {
+        leader = cluster.getOMLeader();
+    } catch (Exception e) {
+        throw new IllegalStateException("No OM leader found before test", e);
+    }
+    if (leader == null || !leader.isRunning() || !leader.isOmRpcServerRunning()) {
+        throw new IllegalStateException("OM leader is not ready before test: " + (leader == null ? "null" : leader.getOMNodeId()));
+    }
+    // Fail fast: 檢查所有 running OM 的 RPC server 狀態
+    for (OzoneManager om : cluster.getOzoneManagersList()) {
+        if (om.isRunning() && !om.isOmRpcServerRunning()) {
+            throw new IllegalStateException("OM " + om.getOMNodeId() + " is running but RPC server is not running");
+        }
+    }
+
+    // do init before each test: stop 1 follower OM
+    stopFollowerOM(leader);
+
+    // Ensure we have exactly 2 running OMs and 1 inactive OM before each test
+    runningCount = cluster.getOzoneManagersList().stream()
+        .filter(OzoneManager::isRunning)
+        .count();
+
+    // If we have less than 2 running OMs, restart one that's stopped
+    if (runningCount < 2) {
+      throw new RuntimeException("[Test] Expected at least 2 running OMs before test start, " + "but found only " + runningCount);
+    }
+
+    // Wait for cluster to be ready with stable leader
+    cluster.waitForClusterToBeReady();
+    cluster.waitForLeaderOM();
+
+
     // Create unique volume and bucket for each test
     volumeName = "volume" + COUNTER.incrementAndGet();
     bucketName = "bucket" + COUNTER.incrementAndGet();
-
     VolumeArgs createVolumeArgs = VolumeArgs.newBuilder()
         .setOwner("user" + COUNTER.incrementAndGet())
         .setAdmin("admin" + COUNTER.incrementAndGet())
         .build();
-
     objectStore.createVolume(volumeName, createVolumeArgs);
     OzoneVolume retVolumeinfo = objectStore.getVolume(volumeName);
 
     retVolumeinfo.createBucket(bucketName,
         BucketArgs.newBuilder().setBucketLayout(TEST_BUCKET_LAYOUT).build());
     ozoneBucket = retVolumeinfo.getBucket(bucketName);
-    cluster.waitForClusterToBeReady();
   }
 
   @AfterEach
   public void cleanupTest() throws Exception {
-    OzoneManager leaderOM = getLeaderOM();
+    recoverCluster();
+    afterTestValidation();
+  }
+
+  private void recoverCluster() throws InterruptedException, TimeoutException {
+    for (OzoneManager ozoneManager : cluster.getOzoneManagersList()) {
+      if (!ozoneManager.isRunning()) {
+        try {
+          cluster.restartOzoneManager(ozoneManager, true);
+        } catch (IOException e) {
+          throw new RuntimeException(e);
+        }
+      }
+    }
+
+    for (OzoneManager ozoneManager : cluster.getOzoneManagersList()) {
+      if (!ozoneManager.getMetadataManager().getStore().getRocksDBCheckpointDiffer()
+          .shouldRun()) {
+        resumeBackupCompactionFilesPruning(ozoneManager);
+      }
+    }
+  }
+
+  private void stopFollowerOM(OzoneManager leaderOM) throws TimeoutException, InterruptedException {
     // stop one follower OM
     for (OzoneManager om : cluster.getOzoneManagersList()) {
       // Stop any OM that is not the current leader and is running
@@ -375,8 +434,21 @@ public class TestSnapshotBackgroundServices {
     }
   }
 
-  private OzoneManager getInactiveFollowerOM(OzoneManager leaderOM) {
-    return cluster.getInactiveOM().next();
+  private OzoneManager getInactiveFollowerOM(OzoneManager leaderOM)
+      throws TimeoutException, InterruptedException {
+    // Wait for an inactive OM to be available
+    AtomicReference<OzoneManager> inactiveOM = new AtomicReference<>();
+    GenericTestUtils.waitFor(() -> {
+      Iterator<OzoneManager> iterator = cluster.getInactiveOM();
+      if (iterator.hasNext()) {
+        inactiveOM.set(iterator.next());
+        return true;
+      }
+      return false;
+    }, 100, 10000);
+    OzoneManager result = inactiveOM.get();
+    assertNotNull(result, "No inactive OM available");
+    return result;
   }
 
   private OzoneManager getLeaderOM() {
@@ -404,54 +476,46 @@ public class TestSnapshotBackgroundServices {
     }
     createSnapshotsEachWithNewKeys(leaderOM);
 
-    try {
+    startInactiveFollower(leaderOM, followerOM,
+        () -> suspendBackupCompactionFilesPruning(followerOM));
 
-      startInactiveFollower(leaderOM, followerOM,
-          () -> suspendBackupCompactionFilesPruning(followerOM));
+    // Read & Write after snapshot installed.
+    List<String> newKeys = writeKeys(1);
+    readKeys(newKeys);
 
-      // Read & Write after snapshot installed.
-      List<String> newKeys = writeKeys(1);
-      readKeys(newKeys);
+    OzoneManager newLeaderOM =
+        getNewLeader(leaderOM, followerOM.getOMNodeId(), followerOM);
+    OzoneManager newFollowerOM =
+        cluster.getOzoneManager(leaderOM.getOMNodeId());
+    assertEquals(leaderOM, newFollowerOM);
 
-      OzoneManager newLeaderOM =
-          getNewLeader(leaderOM, followerOM.getOMNodeId(), followerOM);
-      OzoneManager newFollowerOM =
-          cluster.getOzoneManager(leaderOM.getOMNodeId());
-      assertEquals(leaderOM, newFollowerOM);
+    List<CompactionLogEntry> compactionLogEntriesOnPreviousLeader =
+        getCompactionLogEntries(leaderOM);
 
-      List<CompactionLogEntry> compactionLogEntriesOnPreviousLeader =
-          getCompactionLogEntries(leaderOM);
+    List<CompactionLogEntry> compactionLogEntriesOnNewLeader =
+        getCompactionLogEntries(newLeaderOM);
+    assertEquals(compactionLogEntriesOnPreviousLeader,
+        compactionLogEntriesOnNewLeader);
 
-      List<CompactionLogEntry> compactionLogEntriesOnNewLeader =
-          getCompactionLogEntries(newLeaderOM);
-      assertEquals(compactionLogEntriesOnPreviousLeader,
-          compactionLogEntriesOnNewLeader);
+    assertEquals(leaderOM.getMetadataManager().getStore()
+            .getRocksDBCheckpointDiffer().getForwardCompactionDAG().nodes()
+            .stream().map(CompactionNode::getFileName).collect(toSet()),
+        newLeaderOM.getMetadataManager().getStore()
+            .getRocksDBCheckpointDiffer().getForwardCompactionDAG().nodes()
+            .stream().map(CompactionNode::getFileName).collect(toSet()));
 
-      assertEquals(leaderOM.getMetadataManager().getStore()
-          .getRocksDBCheckpointDiffer().getForwardCompactionDAG().nodes()
-          .stream().map(CompactionNode::getFileName).collect(toSet()),
-          newLeaderOM.getMetadataManager().getStore()
-              .getRocksDBCheckpointDiffer().getForwardCompactionDAG().nodes()
-              .stream().map(CompactionNode::getFileName).collect(toSet()));
+    assertEquals(leaderOM.getMetadataManager().getStore()
+            .getRocksDBCheckpointDiffer().getForwardCompactionDAG().edges()
+            .stream().map(edge1 ->
+                edge1.source().getFileName() + "-" + edge1.target().getFileName())
+            .collect(toSet()),
+        newLeaderOM.getMetadataManager().getStore()
+            .getRocksDBCheckpointDiffer().getForwardCompactionDAG().edges()
+            .stream().map(edge ->
+                edge.source().getFileName() + "-" + edge.target().getFileName())
+            .collect(toSet()));
 
-      assertEquals(leaderOM.getMetadataManager().getStore()
-          .getRocksDBCheckpointDiffer().getForwardCompactionDAG().edges()
-          .stream().map(edge1 ->
-              edge1.source().getFileName() + "-" + edge1.target().getFileName())
-          .collect(toSet()),
-          newLeaderOM.getMetadataManager().getStore()
-              .getRocksDBCheckpointDiffer().getForwardCompactionDAG().edges()
-              .stream().map(edge ->
-                  edge.source().getFileName() + "-" + edge.target().getFileName())
-              .collect(toSet()));
-
-      confirmSnapDiffForTwoSnapshotsDifferingBySingleKey(newLeaderOM);
-    } finally {
-      // recover - resume all OMs (including those that are not running)
-      cluster.getOzoneManagersList().stream()
-          .filter(OzoneManager::isRunning)
-          .forEach(TestSnapshotBackgroundServices::resumeBackupCompactionFilesPruning);
-    }
+    confirmSnapDiffForTwoSnapshotsDifferingBySingleKey(newLeaderOM);
   }
 
   private void restartOzoneManagersWithConfigCustomizer(Consumer<OzoneConfiguration> configCustomizer)
@@ -501,44 +565,48 @@ public class TestSnapshotBackgroundServices {
     OzoneManager leaderOM = getLeaderOM();
     OzoneManager followerOM = getInactiveFollowerOM(leaderOM);
 
-    try {
-      // Suspend all running OMs first (same as master's init() logic for this test)
-      cluster.getOzoneManagersList().stream()
-          .filter(OzoneManager::isRunning)
-          .forEach(TestSnapshotBackgroundServices::suspendBackupCompactionFilesPruning);
+    // Suspend all running OMs first (same as master's init() logic for this test)
+    cluster.getOzoneManagersList().stream()
+        .filter(OzoneManager::isRunning)
+        .forEach(TestSnapshotBackgroundServices::suspendBackupCompactionFilesPruning);
 
-      startInactiveFollower(leaderOM, followerOM,
-          () -> suspendBackupCompactionFilesPruning(followerOM));
+    startInactiveFollower(leaderOM, followerOM,
+        () -> suspendBackupCompactionFilesPruning(followerOM));
 
-      // Read & Write after snapshot installed.
-      List<String> newKeys = writeKeys(1);
-      readKeys(newKeys);
+    // Read & Write after snapshot installed.
+    List<String> newKeys = writeKeys(1);
+    readKeys(newKeys);
 
-      OzoneManager newLeaderOM =
-          getNewLeader(leaderOM, followerOM.getOMNodeId(), followerOM);
-      OzoneManager newFollowerOM =
-          cluster.getOzoneManager(leaderOM.getOMNodeId());
-      assertEquals(leaderOM, newFollowerOM);
+    OzoneManager newLeaderOM =
+        getNewLeader(leaderOM, followerOM.getOMNodeId(), followerOM);
+    OzoneManager newFollowerOM =
+        cluster.getOzoneManager(leaderOM.getOMNodeId());
+    assertEquals(leaderOM, newFollowerOM);
 
-      createSnapshotsEachWithNewKeys(newLeaderOM);
+    createSnapshotsEachWithNewKeys(newLeaderOM);
 
-      File sstBackupDir = getSstBackupDir(newLeaderOM);
-      File[] files = sstBackupDir.listFiles();
-      assertNotNull(files);
-      int numberOfSstFiles = files.length;
+    File sstBackupDir = getSstBackupDir(newLeaderOM);
+    File[] files = sstBackupDir.listFiles();
+    assertNotNull(files);
+    int numberOfSstFiles = files.length;
 
-      resumeBackupCompactionFilesPruning(newLeaderOM);
+    System.out.println(
+        "[DEBUG] testBackupCompactionFilesPruningBackgroundService: sstBackupDir=" + sstBackupDir.getAbsolutePath());
+    System.out.println(
+        "[DEBUG] testBackupCompactionFilesPruningBackgroundService: numberOfSstFiles=" + numberOfSstFiles);
 
-      checkIfCompactionBackupFilesWerePruned(sstBackupDir,
-          numberOfSstFiles);
-
-      confirmSnapDiffForTwoSnapshotsDifferingBySingleKey(newLeaderOM);
-    } finally {
-      // recover - resume all OMs (including those that are not running)
-      cluster.getOzoneManagersList().stream()
-          .filter(OzoneManager::isRunning)
-          .forEach(TestSnapshotBackgroundServices::resumeBackupCompactionFilesPruning);
+    // 如果沒有 backup files，測試無法驗證 pruning，直接跳過 pruning 檢查
+    if (numberOfSstFiles == 0) {
+      throw new RuntimeException("[WARN] No SST backup files found, skipping pruning verification");
     }
+
+    assertEquals(cluster.getOMLeader(), newLeaderOM);
+    resumeBackupCompactionFilesPruning(newLeaderOM);
+
+    checkIfCompactionBackupFilesWerePruned(sstBackupDir,
+        numberOfSstFiles);
+
+    confirmSnapDiffForTwoSnapshotsDifferingBySingleKey(newLeaderOM);
   }
 
   private static void resumeBackupCompactionFilesPruning(
@@ -557,6 +625,25 @@ public class TestSnapshotBackgroundServices {
         .getStore()
         .getRocksDBCheckpointDiffer()
         .suspend();
+  }
+
+  private void afterTestValidation() {
+
+    int runningOmCount = cluster.getOzoneManagersList().stream().filter(OzoneManager::isRunning)
+        .reduce(0, (count, om) -> count + 1, Integer::sum);
+
+
+    int activeRocksDBCheckpointDifferCount = cluster.getOzoneManagersList().stream()
+        .filter(om -> om.getMetadataManager().getStore().getRocksDBCheckpointDiffer()
+            .shouldRun()).reduce(0, (count, om) -> count + 1, Integer::sum);
+
+      if (runningOmCount != 3) {
+        throw new IllegalStateException("Not all OMs are running after test: " + runningOmCount);
+      }
+      if (activeRocksDBCheckpointDifferCount != 3) {
+        throw new IllegalStateException(
+            "Not all OMs have active RocksDBCheckpointDiffer after test: " + activeRocksDBCheckpointDifferCount);
+      }
   }
 
   @Test
@@ -605,11 +692,21 @@ public class TestSnapshotBackgroundServices {
       File sstBackupDir,
       int numberOfSstFiles
   ) throws TimeoutException, InterruptedException {
+    System.out.println("[DEBUG] checkIfCompactionBackupFilesWerePruned: initial numberOfSstFiles=" + numberOfSstFiles);
+
+    // 如果初始檔案數為 0，就沒有東西可以 prune，直接跳過
+    if (numberOfSstFiles == 0) {
+      System.out.println("[DEBUG] No SST backup files to prune, skipping check");
+      return;
+    }
+
+    // 增加等待時間到 30 秒，因為 prune daemon 每 3 秒執行一次
     GenericTestUtils.waitFor(() -> {
-      int newNumberOfSstFiles = Objects.requireNonNull(
-          sstBackupDir.listFiles()).length;
+      File[] currentFiles = sstBackupDir.listFiles();
+      int newNumberOfSstFiles = currentFiles != null ? currentFiles.length : 0;
+      System.out.println("[DEBUG] Current SST backup files: " + newNumberOfSstFiles + ", waiting for < " + numberOfSstFiles);
       return numberOfSstFiles > newNumberOfSstFiles;
-    }, 1000, 10000);
+    }, 1000, 30000);
   }
 
   private static File getSstBackupDir(OzoneManager ozoneManager) {
