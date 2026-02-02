@@ -557,7 +557,7 @@ public class TestSnapshotBackgroundServices {
     return compactionLogEntries;
   }
 
-  //  @Test
+  @Test
   @DisplayName("testBackupCompactionFilesPruningBackgroundService")
   public void testBackupCompactionFilesPruningBackgroundService()
       throws IOException, InterruptedException, TimeoutException {
