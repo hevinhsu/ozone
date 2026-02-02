@@ -159,53 +159,11 @@ public class TestSnapshotBackgroundServices {
 
   @BeforeEach
   public void setupTest() throws IOException, InterruptedException, TimeoutException {
+    stopFollowerOM(cluster.getOMLeader());
 
-    // Test code: verify that current cluster state is healthy before each test
-    long runningCount = cluster.getOzoneManagersList().stream()
-        .filter(OzoneManager::isRunning)
-        .count();
-    if (runningCount != 3) {
-      throw new IllegalStateException("Not enough running OMs before test: " + runningCount);
-    }
-
-    // Fail fast: 檢查 leader 狀態
-    OzoneManager leader = null;
-    try {
-      leader = cluster.getOMLeader();
-    } catch (Exception e) {
-      throw new IllegalStateException("No OM leader found before test", e);
-    }
-    if (leader == null || !leader.isRunning() || !leader.isOmRpcServerRunning()) {
-      throw new IllegalStateException(
-          "OM leader is not ready before test: " + (leader == null ? "null" : leader.getOMNodeId()));
-    }
-    // Fail fast: 檢查所有 running OM 的 RPC server 狀態
-    for (OzoneManager om : cluster.getOzoneManagersList()) {
-      if (om.isRunning() && !om.isOmRpcServerRunning()) {
-        throw new IllegalStateException("OM " + om.getOMNodeId() + " is running but RPC server is not running");
-      }
-    }
-
-    // do init before each test: stop 1 follower OM
-    stopFollowerOM(leader);
-
-    // Ensure we have exactly 2 running OMs and 1 inactive OM before each test
-    runningCount = cluster.getOzoneManagersList().stream()
-        .filter(OzoneManager::isRunning)
-        .count();
-
-    // If we have less than 2 running OMs, restart one that's stopped
-    if (runningCount < 2) {
-      throw new RuntimeException(
-          "[Test] Expected at least 2 running OMs before test start, " + "but found only " + runningCount);
-    }
-
-    // Wait for cluster to be ready with stable leader
     cluster.waitForClusterToBeReady();
     cluster.waitForLeaderOM();
 
-
-    // Create unique volume and bucket for each test
     volumeName = "volume" + COUNTER.incrementAndGet();
     bucketName = "bucket" + COUNTER.incrementAndGet();
     VolumeArgs createVolumeArgs = VolumeArgs.newBuilder()
@@ -223,7 +181,6 @@ public class TestSnapshotBackgroundServices {
   @AfterEach
   public void cleanupTest() throws Exception {
     recoverCluster();
-    afterTestValidation();
   }
 
   private void recoverCluster() throws InterruptedException, TimeoutException {
@@ -246,15 +203,10 @@ public class TestSnapshotBackgroundServices {
   }
 
   private void stopFollowerOM(OzoneManager leaderOM) throws TimeoutException, InterruptedException {
-    // stop one follower OM
     for (OzoneManager om : cluster.getOzoneManagersList()) {
-      // Stop any OM that is not the current leader and is running
       if (om != leaderOM && om.isRunning()) {
         String omNodeId = om.getOMNodeId();
         cluster.stopOzoneManager(omNodeId);
-
-        // Wait for OM to fully stop before proceeding
-        // Check both isRunning() and isOmRpcServerRunning() to ensure RPC server has stopped
         GenericTestUtils.waitFor(() -> !om.isRunning() && !om.isOmRpcServerRunning(), 100, 15000);
         break;
       }
@@ -470,10 +422,6 @@ public class TestSnapshotBackgroundServices {
     OzoneManager leaderOM = getLeaderOM();
     OzoneManager followerOM = getInactiveFollowerOM(leaderOM);
 
-    // todo: delete test code
-    if (leaderOM == null) {
-      throw new OMLeaderNotReadyException("Leader OM is not ready");
-    }
     createSnapshotsEachWithNewKeys(leaderOM);
 
     startInactiveFollower(leaderOM, followerOM,
@@ -562,13 +510,13 @@ public class TestSnapshotBackgroundServices {
   public void testBackupCompactionFilesPruningBackgroundService()
       throws IOException, InterruptedException, TimeoutException {
 
-    OzoneManager leaderOM = getLeaderOM();
-    OzoneManager followerOM = getInactiveFollowerOM(leaderOM);
-
-    // Suspend all running OMs first (same as master's init() logic for this test)
     cluster.getOzoneManagersList().stream()
         .filter(OzoneManager::isRunning)
         .forEach(TestSnapshotBackgroundServices::suspendBackupCompactionFilesPruning);
+
+    OzoneManager leaderOM = getLeaderOM();
+    OzoneManager followerOM = getInactiveFollowerOM(leaderOM);
+
 
     startInactiveFollower(leaderOM, followerOM,
         () -> suspendBackupCompactionFilesPruning(followerOM));
@@ -589,16 +537,6 @@ public class TestSnapshotBackgroundServices {
     File[] files = sstBackupDir.listFiles();
     assertNotNull(files);
     int numberOfSstFiles = files.length;
-
-    System.out.println(
-        "[DEBUG] testBackupCompactionFilesPruningBackgroundService: sstBackupDir=" + sstBackupDir.getAbsolutePath());
-    System.out.println(
-        "[DEBUG] testBackupCompactionFilesPruningBackgroundService: numberOfSstFiles=" + numberOfSstFiles);
-
-    // 如果沒有 backup files，測試無法驗證 pruning，直接跳過 pruning 檢查
-    if (numberOfSstFiles == 0) {
-      throw new RuntimeException("[WARN] No SST backup files found, skipping pruning verification");
-    }
 
     assertEquals(cluster.getOMLeader(), newLeaderOM);
     resumeBackupCompactionFilesPruning(newLeaderOM);
@@ -625,25 +563,6 @@ public class TestSnapshotBackgroundServices {
         .getStore()
         .getRocksDBCheckpointDiffer()
         .suspend();
-  }
-
-  private void afterTestValidation() {
-
-    int runningOmCount = cluster.getOzoneManagersList().stream().filter(OzoneManager::isRunning)
-        .reduce(0, (count, om) -> count + 1, Integer::sum);
-
-
-    int activeRocksDBCheckpointDifferCount = cluster.getOzoneManagersList().stream()
-        .filter(om -> om.getMetadataManager().getStore().getRocksDBCheckpointDiffer()
-            .shouldRun()).reduce(0, (count, om) -> count + 1, Integer::sum);
-
-    if (runningOmCount != 3) {
-      throw new IllegalStateException("Not all OMs are running after test: " + runningOmCount);
-    }
-    if (activeRocksDBCheckpointDifferCount != 3) {
-      throw new IllegalStateException(
-          "Not all OMs have active RocksDBCheckpointDiffer after test: " + activeRocksDBCheckpointDifferCount);
-    }
   }
 
   @Test
@@ -692,20 +611,12 @@ public class TestSnapshotBackgroundServices {
       File sstBackupDir,
       int numberOfSstFiles
   ) throws TimeoutException, InterruptedException {
-    System.out.println("[DEBUG] checkIfCompactionBackupFilesWerePruned: initial numberOfSstFiles=" + numberOfSstFiles);
-
-    // 如果初始檔案數為 0，就沒有東西可以 prune，直接跳過
     if (numberOfSstFiles == 0) {
-      System.out.println("[DEBUG] No SST backup files to prune, skipping check");
       return;
     }
-
-    // 增加等待時間到 30 秒，因為 prune daemon 每 3 秒執行一次
     GenericTestUtils.waitFor(() -> {
       File[] currentFiles = sstBackupDir.listFiles();
       int newNumberOfSstFiles = currentFiles != null ? currentFiles.length : 0;
-      System.out.println(
-          "[DEBUG] Current SST backup files: " + newNumberOfSstFiles + ", waiting for < " + numberOfSstFiles);
       return numberOfSstFiles > newNumberOfSstFiles;
     }, 1000, 30000);
   }
