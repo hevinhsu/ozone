@@ -161,9 +161,6 @@ public class TestSnapshotBackgroundServices {
     recoverCluster();
     stopFollowerOM(cluster.getOMLeader());
 
-    cluster.waitForClusterToBeReady();
-    cluster.waitForLeaderOM();
-
     volumeName = "volume" + COUNTER.incrementAndGet();
     bucketName = "bucket" + COUNTER.incrementAndGet();
     VolumeArgs createVolumeArgs = VolumeArgs.newBuilder()
@@ -181,13 +178,15 @@ public class TestSnapshotBackgroundServices {
   private void recoverCluster() throws InterruptedException, TimeoutException, IOException {
     for (OzoneManager ozoneManager : cluster.getOzoneManagersList()) {
       if (!ozoneManager.isRunning()) {
-        cluster.restartOzoneManager(ozoneManager, true);
+        cluster.restartOzoneManager(ozoneManager, false);
       }
 
       if (!ozoneManager.getMetadataManager().getStore().getRocksDBCheckpointDiffer().shouldRun()) {
         resumeBackupCompactionFilesPruning(ozoneManager);
       }
     }
+    cluster.waitForClusterToBeReady();
+    cluster.waitForLeaderOM();
   }
 
   private void stopFollowerOM(OzoneManager leaderOM) throws TimeoutException, InterruptedException {
