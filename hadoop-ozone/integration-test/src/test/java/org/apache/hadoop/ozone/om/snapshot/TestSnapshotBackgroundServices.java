@@ -43,7 +43,6 @@ import java.util.concurrent.TimeoutException;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.concurrent.atomic.AtomicReference;
-import java.util.function.Consumer;
 import org.apache.commons.io.IOUtils;
 import org.apache.hadoop.hdds.conf.OzoneConfiguration;
 import org.apache.hadoop.hdds.conf.StorageUnit;
@@ -402,7 +401,7 @@ public class TestSnapshotBackgroundServices {
       throws IOException, InterruptedException, TimeoutException {
 
     // recover to default value to prevent side effect
-    restartOzoneManagersWithConfigCustomizer(config -> {
+    cluster.restartOzoneManagersWithConfigCustomizer(config -> {
       config.setTimeDuration(OZONE_OM_SNAPSHOT_COMPACTION_DAG_PRUNE_DAEMON_RUN_INTERVAL, 10, TimeUnit.MINUTES);
     });
 
@@ -451,30 +450,6 @@ public class TestSnapshotBackgroundServices {
             .collect(toSet()));
 
     confirmSnapDiffForTwoSnapshotsDifferingBySingleKey(newLeaderOM);
-  }
-
-  private void restartOzoneManagersWithConfigCustomizer(Consumer<OzoneConfiguration> configCustomizer)
-      throws IOException, TimeoutException, InterruptedException {
-    List<OzoneManager> toRestart = new ArrayList<>();
-    for (OzoneManager om : cluster.getOzoneManagersList()) {
-      OzoneConfiguration configuration = new OzoneConfiguration(om.getConfiguration());
-      if (configCustomizer != null) {
-        configCustomizer.accept(configuration);
-      }
-      om.setConfiguration(configuration);
-      if (om.isRunning()) {
-        toRestart.add(om);
-      }
-    }
-    for (OzoneManager om : toRestart) {
-      if (!om.stop()) {
-        continue;
-      }
-      om.join();
-      om.restart();
-      GenericTestUtils.waitFor(om::isRunning, 1000, 30000);
-    }
-    cluster.waitForLeaderOM();
   }
 
   private List<CompactionLogEntry> getCompactionLogEntries(OzoneManager om)
