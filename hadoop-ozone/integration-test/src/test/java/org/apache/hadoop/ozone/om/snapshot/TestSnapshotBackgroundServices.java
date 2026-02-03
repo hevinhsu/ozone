@@ -119,7 +119,7 @@ public class TestSnapshotBackgroundServices {
     conf.setFromObject(omRatisConf);
 
     OMClientConfig clientConfig = conf.getObject(OMClientConfig.class);
-    clientConfig.setRpcTimeOut(TimeUnit.SECONDS.toMillis(5));
+    clientConfig.setRpcTimeOut(TimeUnit.SECONDS.toMillis(30));
     conf.setFromObject(clientConfig);
 
     conf.setInt(OMConfigKeys.OZONE_OM_RATIS_LOG_PURGE_GAP, LOG_PURGE_GAP);
@@ -159,6 +159,10 @@ public class TestSnapshotBackgroundServices {
   @BeforeEach
   public void setupTest() throws IOException, InterruptedException, TimeoutException {
     recoverCluster();
+    // Wait for cluster to stabilize after recovery before stopping a follower
+    cluster.waitForClusterToBeReady();
+    cluster.waitForLeaderOM();
+    
     stopFollowerOM(cluster.getOMLeader());
 
     cluster.waitForClusterToBeReady();
@@ -528,6 +532,12 @@ public class TestSnapshotBackgroundServices {
 
     assertEquals(cluster.getOMLeader(), newLeaderOM);
     resumeBackupCompactionFilesPruning(newLeaderOM);
+    
+    // Wait for the daemon to pick up the resume signal and start running
+    GenericTestUtils.waitFor(
+        () -> newLeaderOM.getMetadataManager().getStore()
+            .getRocksDBCheckpointDiffer().shouldRun(),
+        100, 5000);
 
     checkIfCompactionBackupFilesWerePruned(sstBackupDir,
         numberOfSstFiles);
