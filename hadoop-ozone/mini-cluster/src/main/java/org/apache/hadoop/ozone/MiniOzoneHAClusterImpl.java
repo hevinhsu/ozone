@@ -268,8 +268,7 @@ public class MiniOzoneHAClusterImpl extends MiniOzoneClusterImpl {
       throws IOException, TimeoutException, InterruptedException {
     LOG.info("Restarting OzoneManager " + ozoneManager.getOMNodeId());
     omhaService.inactiveServices().forEachRemaining(om -> {
-      String omNodeId = om.getOMNodeId();
-      if (omNodeId.equals(ozoneManager.getOMNodeId())) {
+      if (om.equals(ozoneManager)) {
         this.omhaService.activate(om);
       }
     });
