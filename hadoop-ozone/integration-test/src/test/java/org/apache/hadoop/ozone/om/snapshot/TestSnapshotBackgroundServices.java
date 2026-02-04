@@ -345,9 +345,6 @@ public class TestSnapshotBackgroundServices {
     // Start the inactive OM. Checkpoint installation will happen spontaneously.
     cluster.restartOzoneManager(followerOM, true);
 
-    // Wait for leader election to complete after restarting OM
-    cluster.waitForLeaderOM();
-
     actionAfterStarting.run();
 
     // The recently started OM should be lagging behind the leader OM.
@@ -440,8 +437,8 @@ public class TestSnapshotBackgroundServices {
 
     assertEquals(leaderOM.getMetadataManager().getStore()
             .getRocksDBCheckpointDiffer().getForwardCompactionDAG().edges()
-            .stream().map(edge1 ->
-                edge1.source().getFileName() + "-" + edge1.target().getFileName())
+            .stream().map(edge ->
+                edge.source().getFileName() + "-" + edge.target().getFileName())
             .collect(toSet()),
         newLeaderOM.getMetadataManager().getStore()
             .getRocksDBCheckpointDiffer().getForwardCompactionDAG().edges()
@@ -580,7 +577,7 @@ public class TestSnapshotBackgroundServices {
       File[] currentFiles = sstBackupDir.listFiles();
       int newNumberOfSstFiles = currentFiles != null ? currentFiles.length : 0;
       return numberOfSstFiles > newNumberOfSstFiles;
-    }, 1000, 30000);
+    }, 1000, 10000);
   }
 
   private static File getSstBackupDir(OzoneManager ozoneManager) {
@@ -619,11 +616,7 @@ public class TestSnapshotBackgroundServices {
       throws IOException, TimeoutException, InterruptedException {
     verifyLeadershipTransfer(leaderOM, followerNodeId, followerOM);
     OzoneManager newLeaderOM = cluster.getOMLeader();
-    try {
-      assertEquals(followerOM, newLeaderOM);
-    } catch (Exception ex) {
-      throw ex;
-    }
+    assertEquals(followerOM, newLeaderOM);
     return newLeaderOM;
   }
 
