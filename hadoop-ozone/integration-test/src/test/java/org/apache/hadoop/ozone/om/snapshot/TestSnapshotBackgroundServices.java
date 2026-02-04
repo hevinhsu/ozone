@@ -345,7 +345,6 @@ public class TestSnapshotBackgroundServices {
 
     // Start the inactive OM. Checkpoint installation will happen spontaneously.
     cluster.restartOzoneManager(followerOM, true);
-
     actionAfterStarting.run();
 
     // The recently started OM should be lagging behind the leader OM.
@@ -571,11 +570,9 @@ public class TestSnapshotBackgroundServices {
       File sstBackupDir,
       int numberOfSstFiles
   ) throws TimeoutException, InterruptedException {
-    if (numberOfSstFiles == 0) {
-      return;
-    }
     GenericTestUtils.waitFor(() -> {
-      int newNumberOfSstFiles = Objects.requireNonNull(sstBackupDir.listFiles()).length;
+      int newNumberOfSstFiles = Objects.requireNonNull(
+          sstBackupDir.listFiles()).length;
       return numberOfSstFiles > newNumberOfSstFiles;
     }, 1000, 10000);
   }
