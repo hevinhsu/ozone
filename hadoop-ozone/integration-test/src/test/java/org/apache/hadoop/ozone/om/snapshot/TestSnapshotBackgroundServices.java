@@ -38,6 +38,7 @@ import java.util.ArrayList;
 import java.util.Collections;
 import java.util.Iterator;
 import java.util.List;
+import java.util.Objects;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
 import java.util.concurrent.atomic.AtomicInteger;
@@ -574,8 +575,7 @@ public class TestSnapshotBackgroundServices {
       return;
     }
     GenericTestUtils.waitFor(() -> {
-      File[] currentFiles = sstBackupDir.listFiles();
-      int newNumberOfSstFiles = currentFiles != null ? currentFiles.length : 0;
+      int newNumberOfSstFiles = Objects.requireNonNull(sstBackupDir.listFiles()).length;
       return numberOfSstFiles > newNumberOfSstFiles;
     }, 1000, 10000);
   }
