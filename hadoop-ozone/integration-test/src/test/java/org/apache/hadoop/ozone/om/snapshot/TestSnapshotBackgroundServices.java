@@ -397,7 +397,7 @@ public class TestSnapshotBackgroundServices {
   public void testCompactionLogBackgroundService()
       throws IOException, InterruptedException, TimeoutException {
 
-    // recover to default value to prevent side effect
+    // reset to the default value to avoid side effects
     cluster.restartOzoneManagersWithConfigCustomizer(config -> {
       config.setTimeDuration(OZONE_OM_SNAPSHOT_COMPACTION_DAG_PRUNE_DAEMON_RUN_INTERVAL, 10, TimeUnit.MINUTES);
     });
