@@ -37,7 +37,7 @@ import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.ArgumentMatchers.anyMap;
 import static org.mockito.Mockito.doThrow;
-import  static org.mockito.Mockito.spy;
+import static org.mockito.Mockito.spy;
 
 import java.io.File;
 import java.io.IOException;
@@ -129,6 +129,7 @@ public class TestContainerReconciliationWithMockDatanodes {
   private static final int CHUNK_LEN = 3 * (int) OzoneConsts.KB;
   private static final int CHUNKS_PER_BLOCK = 4;
   private static final int NUM_DATANODES = 3;
+  private static long nextDeleteTestContainerID = CONTAINER_ID + 1;
 
   private static final String TEST_SCAN = "Test Scan";
 
@@ -335,8 +336,6 @@ public class TestContainerReconciliationWithMockDatanodes {
     // Even failure of Reconciliation should have triggered a second on-demand scan for each replica.
     waitForExpectedScanCount(2);
   }
-
-  private static long nextDeleteTestContainerID = CONTAINER_ID + 1;
 
   private List<BlockData> getBlocks(MockDatanode dn, long containerID) throws IOException {
     KeyValueContainer container = dn.getContainer(containerID);
