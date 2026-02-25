@@ -57,6 +57,7 @@ import static org.apache.hadoop.ozone.om.OMConfigKeys.OZONE_OM_KERBEROS_KEYTAB_F
 import static org.apache.hadoop.ozone.om.OMConfigKeys.OZONE_OM_KERBEROS_PRINCIPAL_KEY;
 import static org.apache.hadoop.security.UserGroupInformation.AuthenticationMethod.KERBEROS;
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
@@ -68,6 +69,7 @@ import java.net.InetAddress;
 import java.nio.file.Files;
 import java.nio.file.Paths;
 import java.nio.file.StandardOpenOption;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Properties;
 import java.util.Set;
@@ -482,6 +484,169 @@ public class TestContainerCommandReconciliation {
         newContainerChecksumInfo.getContainerMerkleTree());
     assertEquals(oldDataChecksum, newContainerChecksumInfo.getContainerMerkleTree().getDataChecksum());
     TestHelper.validateData(KEY_NAME, data, store, volume, bucket);
+  }
+
+  /**
+   * HDDS-11765: Tests that reconciliation deletes blocks from replicas that missed block delete transactions.
+   * Simulates one replica properly deleting blocks (block data removed from DB and chunk files, merkle tree updated),
+   * then triggers reconciliation and verifies the other replicas also delete those blocks.
+   */
+  @Test
+  @Flaky("HDDS-13401")
+  public void testReconcileDeletedBlocks() throws Exception {
+    // 1. Write data to a container.
+    String volume = UUID.randomUUID().toString();
+    String bucket = UUID.randomUUID().toString();
+    Pair<Long, byte[]> containerAndData = getDataAndContainer(true, 20 * 1024 * 1024, volume, bucket);
+    long containerID = containerAndData.getLeft();
+
+    // Get all the datanodes where the container replicas are stored.
+    List<DatanodeDetails> dataNodeDetails = cluster.getStorageContainerManager().getContainerManager()
+        .getContainerReplicas(ContainerID.valueOf(containerID))
+        .stream().map(ContainerReplica::getDatanodeDetails)
+        .collect(Collectors.toList());
+    assertEquals(3, dataNodeDetails.size());
+
+    // Pick first datanode to simulate block deletions (as if SCM sent delete command to this DN only).
+    HddsDatanodeService deleteDN = cluster.getHddsDatanode(dataNodeDetails.get(0));
+    DatanodeStateMachine deleteDSM = deleteDN.getDatanodeStateMachine();
+    Container<?> deleteContainer = deleteDSM.getContainer().getContainerSet().getContainer(containerID);
+    KeyValueContainerData deleteContainerData = (KeyValueContainerData) deleteContainer.getContainerData();
+    KeyValueHandler deleteKvHandler = (KeyValueHandler) deleteDSM.getContainer().getDispatcher()
+        .getHandler(ContainerProtos.ContainerType.KeyValueContainer);
+
+    BlockManager blockManager = deleteKvHandler.getBlockManager();
+    List<BlockData> allBlocks = blockManager.listBlock(deleteContainer, -1, 100);
+    assertTrue(allBlocks.size() > 1, "Container should have more than 1 block for this test");
+
+    // Save the original checksum for comparison.
+    ContainerProtos.ContainerChecksumInfo originalChecksumInfo = readChecksumFile(deleteContainer.getContainerData());
+    long originalDataChecksum = originalChecksumInfo.getContainerMerkleTree().getDataChecksum();
+
+    // Record the blocks we'll delete (every other block).
+    List<BlockData> blocksToDelete = new ArrayList<>();
+    for (int i = 0; i < allBlocks.size(); i += 2) {
+      blocksToDelete.add(allBlocks.get(i));
+    }
+
+    // 2. On the first datanode: delete block data (DB + chunk files) and update merkle tree.
+    // This simulates a proper SCM-driven block deletion that the other DNs missed.
+    // We do NOT go through SCM's deletedBlockLog, so SCM has no delete transaction for these blocks.
+    String chunksPath = deleteContainer.getContainerData().getChunksPath();
+    try (DBHandle db = BlockUtils.getDB(deleteContainerData, conf);
+         BatchOperation op = db.getStore().getBatchHandler().initBatchOperation()) {
+      for (BlockData blockData : blocksToDelete) {
+        long localID = blockData.getLocalID();
+        // Delete block metadata from DB
+        db.getStore().getBlockDataTable().deleteWithBatch(op, deleteContainerData.getBlockKey(localID));
+        // Delete chunk file from disk
+        Files.deleteIfExists(Paths.get(chunksPath + "/" + localID + ".block"));
+      }
+      db.getStore().getBatchHandler().commitBatchOperation(op);
+      db.getStore().flushDB();
+    }
+
+    // Update the merkle tree on the first DN to mark these blocks as deleted (like BlockDeletingService does).
+    // addDeletedBlocks persists the updated tree (with deleted block entries) to disk.
+    deleteKvHandler.getChecksumManager().addDeletedBlocks(deleteContainerData, blocksToDelete);
+
+    // Trigger on-demand scan on DN0 so the scanner rebuilds the tree from remaining live blocks on disk,
+    // merges the deleted block entries from the .tree file, and sends an ICR with the updated checksum.
+    // This mirrors what happens in production after BlockDeletingService runs and the scanner picks up the change.
+    deleteDSM.getContainer().getContainerSet().scanContainerWithoutGap(containerID, TEST_SCAN);
+
+    // Wait for SCM to see 2 distinct data checksums: DN0's (with deleted blocks) vs DN1/DN2's (all blocks live).
+    waitForDataChecksumsAtSCM(containerID, 2);
+
+    // Verify locally that the checksum file on disk has changed after block deletion.
+    ContainerProtos.ContainerChecksumInfo checksumAfterDelete = readChecksumFile(deleteContainer.getContainerData());
+    long dataChecksumAfterDelete = checksumAfterDelete.getContainerMerkleTree().getDataChecksum();
+    assertNotEquals(originalDataChecksum, dataChecksumAfterDelete,
+        "Checksum on DN0 should differ from original after deleting blocks and updating merkle tree");
+
+    // 3. Verify blocks still exist on other replicas before reconciliation.
+    for (int dnIdx = 1; dnIdx < dataNodeDetails.size(); dnIdx++) {
+      HddsDatanodeService otherDN = cluster.getHddsDatanode(dataNodeDetails.get(dnIdx));
+      DatanodeStateMachine otherDSM = otherDN.getDatanodeStateMachine();
+      Container<?> otherContainer = otherDSM.getContainer().getContainerSet().getContainer(containerID);
+      KeyValueHandler otherHandler = (KeyValueHandler) otherDSM.getContainer().getDispatcher()
+          .getHandler(ContainerProtos.ContainerType.KeyValueContainer);
+      BlockManager otherBlockManager = otherHandler.getBlockManager();
+
+      for (BlockData deletedBlock : blocksToDelete) {
+        assertTrue(otherBlockManager.blockExists(otherContainer,
+            deletedBlock.getBlockID()),
+            "Block " + deletedBlock.getLocalID() + " should still exist on DN " + dnIdx + " before reconciliation");
+      }
+    }
+
+    // 4. Trigger reconciliation.
+    // reconcileContainer API sends ReconcileContainerCommand to all DNs for this container.
+    // It does not require SCM to have seen divergent checksums — it only checks container/replica state eligibility.
+    cluster.getStorageContainerLocationClient().reconcileContainer(containerID);
+
+    // 5. Wait for blocks to be deleted on other replicas.
+    // reconcileContainer is async: each DN compares its merkle tree with peers, discovers deleted block entries,
+    // and deletes those blocks locally via deleteBlockForReconciliation.
+    for (int dnIdx = 1; dnIdx < dataNodeDetails.size(); dnIdx++) {
+      HddsDatanodeService otherDN = cluster.getHddsDatanode(dataNodeDetails.get(dnIdx));
+      Container<?> otherContainer = otherDN.getDatanodeStateMachine().getContainer()
+          .getContainerSet().getContainer(containerID);
+      KeyValueHandler otherHandler = (KeyValueHandler) otherDN.getDatanodeStateMachine().getContainer()
+          .getDispatcher().getHandler(ContainerProtos.ContainerType.KeyValueContainer);
+      BlockManager otherBlockManager = otherHandler.getBlockManager();
+
+      int idx = dnIdx;
+      GenericTestUtils.waitFor(() -> {
+        try {
+          for (BlockData deletedBlock : blocksToDelete) {
+            if (otherBlockManager.blockExists(otherContainer, deletedBlock.getBlockID())) {
+              return false;
+            }
+          }
+          return true;
+        } catch (Exception e) {
+          LOG.warn("Error checking blocks on DN {}", idx, e);
+          return false;
+        }
+      }, 1000, 60000);
+    }
+
+    // 6. Verify merkle trees match across all replicas.
+    // Reconciliation triggers scanContainerWithoutGap + sendICR on completion, which is also async.
+    // Poll until all checksum files on disk converge to the same dataChecksum.
+    GenericTestUtils.waitFor(() -> {
+      try {
+        ContainerProtos.ContainerChecksumInfo firstInfo = readChecksumFile(deleteContainer.getContainerData());
+        long firstChecksum = firstInfo.getContainerMerkleTree().getDataChecksum();
+        if (firstChecksum == 0) {
+          return false;
+        }
+        for (int dnIdx = 1; dnIdx < dataNodeDetails.size(); dnIdx++) {
+          Container<?> otherContainer = cluster.getHddsDatanode(dataNodeDetails.get(dnIdx))
+              .getDatanodeStateMachine().getContainer().getContainerSet().getContainer(containerID);
+          ContainerProtos.ContainerChecksumInfo otherInfo = readChecksumFile(otherContainer.getContainerData());
+          if (otherInfo.getContainerMerkleTree().getDataChecksum() != firstChecksum) {
+            return false;
+          }
+        }
+        return true;
+      } catch (Exception e) {
+        return false;
+      }
+    }, 1000, 60000);
+
+    // Final assertion: all trees should be sorted and match.
+    ContainerProtos.ContainerChecksumInfo firstReplicaChecksumInfo =
+        readChecksumFile(deleteContainer.getContainerData());
+    for (int dnIdx = 1; dnIdx < dataNodeDetails.size(); dnIdx++) {
+      HddsDatanodeService otherDN = cluster.getHddsDatanode(dataNodeDetails.get(dnIdx));
+      Container<?> otherContainer = otherDN.getDatanodeStateMachine().getContainer()
+          .getContainerSet().getContainer(containerID);
+      ContainerProtos.ContainerChecksumInfo otherChecksumInfo = readChecksumFile(otherContainer.getContainerData());
+      assertTreesSortedAndMatch(firstReplicaChecksumInfo.getContainerMerkleTree(),
+          otherChecksumInfo.getContainerMerkleTree());
+    }
   }
 
   @Test
