@@ -77,7 +77,6 @@ import java.util.UUID;
 import java.util.stream.Collectors;
 import org.apache.commons.io.IOUtils;
 import org.apache.commons.lang3.tuple.Pair;
-import org.apache.hadoop.hdds.client.BlockID;
 import org.apache.hadoop.hdds.conf.OzoneConfiguration;
 import org.apache.hadoop.hdds.conf.StorageUnit;
 import org.apache.hadoop.hdds.protocol.DatanodeDetails;
@@ -488,16 +487,27 @@ public class TestContainerCommandReconciliation {
   }
 
   /**
-   * HDDS-11765: Tests that reconciliation handles missed block deletions.
+   * HDDS-11765: Tests that reconciliation directly deletes blocks that a peer has marked as deleted,
+   * without going through SCM's block deletion pipeline.
    *
-   * Scenario: DN-A has blocks physically missing (deleted from DB + disk, tree rebuilt by scanner without those
-   * blocks), while DN-B has those blocks marked as deleted in its merkle tree (as BlockDeletingService would do).
-   * Because DN-A's tree has fewer block entries than DN-B's, the container-level checksums differ.
-   * When DN-A reconciles with DN-B, the diff walks path B in compareContainerMerkleTree: peer (DN-B) has blockIDs
-   * that we (DN-A) don't have, and peer's blocks are marked deleted → addDivergedDeletedBlock.
-   * DN-A then calls setDeletedBlock to mark those blocks as deleted in its own tree, and
-   * deleteBlockForReconciliation to clean up any residual data (idempotent since blocks are already gone on DN-A).
-   * After reconciliation, DN-A's tree converges with DN-B's tree.
+   * Roles:
+   * - peerDn: Simulates a DN that already ran BlockDeletingService — target blocks are physically
+   *           deleted and marked as deleted=true in its merkle tree.
+   * - localDn: The DN under test — DB metadata for target blocks is removed (so its tree loses those
+   *            blockIDs after scan), but chunk files are intentionally kept on disk. During reconciliation,
+   *            localDn discovers that peerDn has deleted block entries it doesn't have (path B in
+   *            compareContainerMerkleTree), and deleteBlockForReconciliation cleans up the orphaned
+   *            chunk files via deleteUnreferenced.
+   *
+   * Why path B: The diff algorithm compares block entries between two trees. When peerDn's tree has a
+   * blockID that localDn's tree does not (because localDn's DB metadata was removed and the scanner
+   * rebuilt the tree without it), the diff enters path B (L148-155). If the peer's block is marked
+   * deleted, it triggers addDivergedDeletedBlock → deleteBlockForReconciliation.
+   *
+   * Note: Path A (L200-206, both trees have the same blockID but one is deleted) cannot be triggered
+   * in the current implementation because setDataChecksumFromChunks does not include the deleted flag.
+   * A deleted block's checksum equals its live checksum, so the block-level checksum gate (L138) would
+   * skip the comparison. This is a known limitation.
    */
   @Test
   @Flaky("HDDS-13401")
@@ -514,141 +524,133 @@ public class TestContainerCommandReconciliation {
         .collect(Collectors.toList());
     assertEquals(3, dataNodeDetails.size());
 
-    // Assign roles: DN-A = missing blocks, DN-B = deleted block entries, DN-C = untouched (live blocks)
-    // DN-A (index 0): will have blocks removed from DB + disk, then scanned so tree loses those blocks.
-    // DN-B (index 1): will have addDeletedBlocks called so tree marks those blocks as deleted.
-    // DN-C (index 2): untouched, still has all live blocks.
-    HddsDatanodeService dnA = cluster.getHddsDatanode(dataNodeDetails.get(0));
-    DatanodeStateMachine dsmA = dnA.getDatanodeStateMachine();
-    Container<?> containerA = dsmA.getContainer().getContainerSet().getContainer(containerID);
-    KeyValueContainerData containerDataA = (KeyValueContainerData) containerA.getContainerData();
-    KeyValueHandler handlerA = (KeyValueHandler) dsmA.getContainer().getDispatcher()
+    // peerDn: the DN that already ran BlockDeletingService (blocks deleted + tree marked deleted).
+    HddsDatanodeService peerDn = cluster.getHddsDatanode(dataNodeDetails.get(0));
+    DatanodeStateMachine peerDsm = peerDn.getDatanodeStateMachine();
+    Container<?> peerContainer = peerDsm.getContainer().getContainerSet().getContainer(containerID);
+    KeyValueContainerData peerContainerData = (KeyValueContainerData) peerContainer.getContainerData();
+    KeyValueHandler peerHandler = (KeyValueHandler) peerDsm.getContainer().getDispatcher()
         .getHandler(ContainerProtos.ContainerType.KeyValueContainer);
 
-    HddsDatanodeService dnB = cluster.getHddsDatanode(dataNodeDetails.get(1));
-    DatanodeStateMachine dsmB = dnB.getDatanodeStateMachine();
-    Container<?> containerB = dsmB.getContainer().getContainerSet().getContainer(containerID);
-    KeyValueContainerData containerDataB = (KeyValueContainerData) containerB.getContainerData();
-    KeyValueHandler handlerB = (KeyValueHandler) dsmB.getContainer().getDispatcher()
-        .getHandler(ContainerProtos.ContainerType.KeyValueContainer);
+    // localDn: the DN under test — DB metadata removed but chunk files kept on disk.
+    HddsDatanodeService localDn = cluster.getHddsDatanode(dataNodeDetails.get(1));
+    DatanodeStateMachine localDsm = localDn.getDatanodeStateMachine();
+    Container<?> localContainer = localDsm.getContainer().getContainerSet().getContainer(containerID);
+    KeyValueContainerData localContainerData = (KeyValueContainerData) localContainer.getContainerData();
 
-    // List all blocks and pick every other block to delete.
-    BlockManager blockManagerA = handlerA.getBlockManager();
-    List<BlockData> allBlocks = blockManagerA.listBlock(containerA, -1, 100);
+    // otherPeerDn: also has DB metadata removed + scan, so its tree also loses these blockIDs.
+    // This prevents localDn from pulling the blocks back if it reconciles with otherPeerDn first
+    // (without this, otherPeerDn would still have these blocks as live → addMissingBlock → pull back).
+    HddsDatanodeService otherPeerDn = cluster.getHddsDatanode(dataNodeDetails.get(2));
+    DatanodeStateMachine otherPeerDsm = otherPeerDn.getDatanodeStateMachine();
+    Container<?> otherPeerContainer = otherPeerDsm.getContainer().getContainerSet().getContainer(containerID);
+    KeyValueContainerData otherPeerContainerData = (KeyValueContainerData) otherPeerContainer.getContainerData();
+
+    // List all blocks from peerDn (all DNs have the same blocks at this point).
+    BlockManager peerBlockManager = peerHandler.getBlockManager();
+    List<BlockData> allBlocks = peerBlockManager.listBlock(peerContainer, -1, 100);
     assertTrue(allBlocks.size() > 1, "Container should have more than 1 block for this test");
 
+    // Pick every other block for deletion.
     List<BlockData> blocksToDelete = new ArrayList<>();
     for (int i = 0; i < allBlocks.size(); i += 2) {
       blocksToDelete.add(allBlocks.get(i));
     }
 
-    // Save original checksum.
-    ContainerProtos.ContainerChecksumInfo originalChecksumInfo = readChecksumFile(containerA.getContainerData());
-    long originalDataChecksum = originalChecksumInfo.getContainerMerkleTree().getDataChecksum();
-    assertNotEquals(0, originalDataChecksum, "Container should have a non-zero data checksum after initial scan");
-
-    // 2. Create divergence between DN-A and DN-B.
-
-    // DN-A: Delete block metadata from DB and chunk files from disk, then scan.
-    // After scan, the tree on DN-A will NOT contain these blocks (they are simply missing).
-    String chunksPathA = containerA.getContainerData().getChunksPath();
-    try (DBHandle db = BlockUtils.getDB(containerDataA, conf);
+    // 2. peerDn: Simulate a complete BlockDeletingService run.
+    //    Delete block metadata from DB and chunk files from disk, then mark as deleted in merkle tree.
+    String peerChunksPath = peerContainer.getContainerData().getChunksPath();
+    try (DBHandle db = BlockUtils.getDB(peerContainerData, conf);
          BatchOperation op = db.getStore().getBatchHandler().initBatchOperation()) {
       for (BlockData blockData : blocksToDelete) {
         long localID = blockData.getLocalID();
-        db.getStore().getBlockDataTable().deleteWithBatch(op, containerDataA.getBlockKey(localID));
-        Files.deleteIfExists(Paths.get(chunksPathA + "/" + localID + ".block"));
+        db.getStore().getBlockDataTable().deleteWithBatch(op, peerContainerData.getBlockKey(localID));
+        Files.deleteIfExists(Paths.get(peerChunksPath + "/" + localID + ".block"));
       }
       db.getStore().getBatchHandler().commitBatchOperation(op);
       db.getStore().flushDB();
     }
-    // Scan DN-A so its tree reflects the missing blocks (tree will have fewer block entries).
-    // scanContainerWithoutGap is async, so wait for SCM to see divergent checksums before proceeding.
-    dsmA.getContainer().getContainerSet().scanContainerWithoutGap(containerID, TEST_SCAN);
+    // Mark those blocks as deleted in peerDn's merkle tree (like BlockDeletingService does).
+    peerHandler.getChecksumManager().addDeletedBlocks(peerContainerData, blocksToDelete);
+    // Scan to rebuild the tree and send ICR.
+    peerDsm.getContainer().getContainerSet().scanContainerWithoutGap(containerID, TEST_SCAN);
+
+    // 3. localDn: Remove ONLY block metadata from DB (keep chunk files on disk), then scan.
+    //    After scan, localDn's tree will NOT contain these blockIDs (scanner only sees blocks in DB).
+    //    But chunk files remain physically on disk — deleteBlockForReconciliation will clean them up.
+    String localChunksPath = localContainer.getContainerData().getChunksPath();
+    try (DBHandle db = BlockUtils.getDB(localContainerData, conf);
+         BatchOperation op = db.getStore().getBatchHandler().initBatchOperation()) {
+      for (BlockData blockData : blocksToDelete) {
+        long localID = blockData.getLocalID();
+        db.getStore().getBlockDataTable().deleteWithBatch(op, localContainerData.getBlockKey(localID));
+        // Intentionally NOT deleting chunk files — they remain on disk as orphans.
+      }
+      db.getStore().getBatchHandler().commitBatchOperation(op);
+      db.getStore().flushDB();
+    }
+    localDsm.getContainer().getContainerSet().scanContainerWithoutGap(containerID, TEST_SCAN);
+
+    // otherPeerDn: Also remove DB metadata and scan, so its tree also loses these blockIDs.
+    try (DBHandle db = BlockUtils.getDB(otherPeerContainerData, conf);
+         BatchOperation op = db.getStore().getBatchHandler().initBatchOperation()) {
+      for (BlockData blockData : blocksToDelete) {
+        long localID = blockData.getLocalID();
+        db.getStore().getBlockDataTable().deleteWithBatch(op, otherPeerContainerData.getBlockKey(localID));
+      }
+      db.getStore().getBatchHandler().commitBatchOperation(op);
+      db.getStore().flushDB();
+    }
+    otherPeerDsm.getContainer().getContainerSet().scanContainerWithoutGap(containerID, TEST_SCAN);
+
+    // Wait for SCM to see divergent checksums.
     waitForDataChecksumsAtSCM(containerID, 2);
 
-    // DN-B: Get the same blocks' BlockData from DN-B's DB, then call addDeletedBlocks to mark them as deleted.
-    // DN-B's tree will still contain these blockIDs but with deleted=true.
-    BlockManager blockManagerB = handlerB.getBlockManager();
-    List<BlockData> blocksToDeleteOnB = new ArrayList<>();
+    // 4. Verify preconditions.
+    //    Chunk files should still exist on localDn even though DB metadata is gone.
     for (BlockData bd : blocksToDelete) {
-      // Read the same block from DN-B's DB (it still has all blocks).
-      BlockData bdOnB = blockManagerB.getBlock(containerB,
-          new BlockID(containerID, bd.getLocalID()));
-      blocksToDeleteOnB.add(bdOnB);
-    }
-    handlerB.getChecksumManager().addDeletedBlocks(containerDataB, blocksToDeleteOnB);
-
-    // 3. Verify container-level checksums are different between DN-A and DN-B.
-    ContainerProtos.ContainerChecksumInfo checksumA = readChecksumFile(containerA.getContainerData());
-    ContainerProtos.ContainerChecksumInfo checksumB = readChecksumFile(containerB.getContainerData());
-    long dataChecksumA = checksumA.getContainerMerkleTree().getDataChecksum();
-    long dataChecksumB = checksumB.getContainerMerkleTree().getDataChecksum();
-    assertNotEquals(0, dataChecksumA, "DN-A should have non-zero data checksum after scan");
-    assertNotEquals(0, dataChecksumB, "DN-B should have non-zero data checksum after addDeletedBlocks");
-    assertNotEquals(dataChecksumA, dataChecksumB,
-        "DN-A (missing blocks) and DN-B (deleted blocks) should have different container checksums");
-
-    // Verify DN-A's tree does NOT contain the deleted blocks.
-    for (BlockData bd : blocksToDelete) {
-      long blockID = bd.getLocalID();
-      boolean foundInA = checksumA.getContainerMerkleTree().getBlockMerkleTreeList().stream()
-          .anyMatch(b -> b.getBlockID() == blockID);
-      assertFalse(foundInA, "Block " + blockID + " should NOT be in DN-A's tree (it was physically removed)");
+      assertTrue(Files.exists(Paths.get(localChunksPath + "/" + bd.getLocalID() + ".block")),
+          "Chunk file for block " + bd.getLocalID() + " should still exist on localDn before reconciliation");
     }
 
-    // Verify DN-B's tree DOES contain the deleted blocks with deleted=true.
-    for (BlockData bd : blocksToDelete) {
-      long blockID = bd.getLocalID();
-      ContainerProtos.BlockMerkleTree blockTree = checksumB.getContainerMerkleTree().getBlockMerkleTreeList().stream()
-          .filter(b -> b.getBlockID() == blockID)
-          .findFirst()
-          .orElseThrow(() -> new AssertionError("Block " + blockID + " should be in DN-B's tree"));
-      assertTrue(blockTree.getDeleted(), "Block " + blockID + " should be marked deleted in DN-B's tree");
-    }
-
-    // 4. Trigger reconciliation.
+    // 5. Trigger reconciliation.
     cluster.getStorageContainerLocationClient().reconcileContainer(containerID);
 
-    // 5. Wait for reconciliation to complete on DN-A.
-    // DN-A reconciles with DN-B: diff finds DN-B has deleted blocks that DN-A doesn't have (path B:
-    //   peer has blockID we don't have, and peer's block is deleted) → addDivergedDeletedBlock →
-    //   setDeletedBlock (updates tree) + deleteBlockForReconciliation (idempotent, blocks already gone on DN-A).
-    //
-    // Note: DN-C cannot detect the deleted blocks via diff with DN-B, because DN-C has the same blockIDs as DN-B
-    // and the block-level checksums are identical (deleted flag is not included in checksum computation).
-    // DN-C's reconciliation with DN-B will see matching container checksums and skip the diff entirely.
-    // Physical deletion on DN-C would require a separate mechanism (e.g., BlockDeletingService catching up).
-
-    // Wait until DN-A's tree converges with DN-B's tree.
+    // 6. Wait for localDn to clean up the orphaned chunk files.
+    //    localDn reconciles with peerDn: localDn's tree has fewer blocks than peerDn's →
+    //    container checksums differ → diff walks the block lists → path B (L148-155):
+    //    peerDn has deleted blockIDs that localDn doesn't have →
+    //    addDivergedDeletedBlock → deleteBlockForReconciliation →
+    //    deleteUnreferenced removes the orphaned chunk files from localDn.
     GenericTestUtils.waitFor(() -> {
-      try {
-        ContainerProtos.ContainerChecksumInfo infoA = readChecksumFile(containerA.getContainerData());
-        ContainerProtos.ContainerChecksumInfo infoB = readChecksumFile(containerB.getContainerData());
-        return infoA.getContainerMerkleTree().getDataChecksum() != 0
-            && infoA.getContainerMerkleTree().getDataChecksum()
-            == infoB.getContainerMerkleTree().getDataChecksum();
-      } catch (Exception e) {
-        return false;
+      for (BlockData bd : blocksToDelete) {
+        if (Files.exists(Paths.get(localChunksPath + "/" + bd.getLocalID() + ".block"))) {
+          return false;
+        }
       }
+      return true;
     }, 1000, 120000);
 
-    // 6. Verify final state on DN-A.
-    // DN-A's tree should now contain the deleted blocks (marked as deleted) from DN-B.
-    ContainerProtos.ContainerChecksumInfo finalInfoA = readChecksumFile(containerA.getContainerData());
-    assertTreesSortedAndMatch(finalInfoA.getContainerMerkleTree(),
-        readChecksumFile(containerB.getContainerData()).getContainerMerkleTree());
+    // 7. Verify final state on localDn.
+    //    Chunk files should be physically deleted.
+    for (BlockData bd : blocksToDelete) {
+      assertFalse(Files.exists(Paths.get(localChunksPath + "/" + bd.getLocalID() + ".block")),
+          "Chunk file for block " + bd.getLocalID()
+              + " should be physically deleted from localDn by deleteBlockForReconciliation");
+    }
 
-    // Verify deleted blocks are marked as deleted in DN-A's tree.
+    //    Deleted blocks should be marked as deleted in localDn's tree.
+    ContainerProtos.ContainerChecksumInfo localFinalInfo = readChecksumFile(localContainer.getContainerData());
     for (BlockData bd : blocksToDelete) {
       long blockID = bd.getLocalID();
-      ContainerProtos.BlockMerkleTree blockTree = finalInfoA.getContainerMerkleTree().getBlockMerkleTreeList().stream()
-          .filter(b -> b.getBlockID() == blockID)
-          .findFirst()
-          .orElseThrow(() -> new AssertionError(
-              "Block " + blockID + " should be in DN-A's tree after reconciliation with DN-B"));
+      ContainerProtos.BlockMerkleTree blockTree =
+          localFinalInfo.getContainerMerkleTree().getBlockMerkleTreeList().stream()
+              .filter(b -> b.getBlockID() == blockID)
+              .findFirst()
+              .orElseThrow(() -> new AssertionError(
+                  "Block " + blockID + " should be in localDn's tree (as deleted) after reconciliation"));
       assertTrue(blockTree.getDeleted(),
-          "Block " + blockID + " should be marked deleted on DN-A after reconciliation");
+          "Block " + blockID + " should be marked deleted in localDn's tree after reconciliation");
     }
   }
 
