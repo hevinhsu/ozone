@@ -487,9 +487,6 @@ public class TestContainerCommandReconciliation {
   }
 
   /**
-   * HDDS-11765: Verifies that reconciliation directly deletes blocks on a DN when peers' merkle trees
-   * indicate those blocks have been deleted, without going through SCM's block deletion pipeline.
-   *
    * Setup:
    * - Both peers: Simulate BlockDeletingService — delete DB metadata + chunk files, then call
    *               addDeletedBlocks to mark blocks as deleted in their merkle trees.
