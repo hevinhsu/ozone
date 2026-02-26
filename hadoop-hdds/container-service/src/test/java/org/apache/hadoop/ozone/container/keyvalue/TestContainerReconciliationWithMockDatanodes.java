@@ -342,15 +342,8 @@ public class TestContainerReconciliationWithMockDatanodes {
     return dn.getHandler().getBlockManager().listBlock(container, -1, 100);
   }
 
-  private boolean chunkFileExists(KeyValueContainerData containerData, long localBlockID) throws IOException {
-    File chunksDir = new File(containerData.getChunksPath());
-    if (!chunksDir.exists()) {
-      return false;
-    }
-    try (DirectoryStream<Path> stream = Files.newDirectoryStream(chunksDir.toPath(),
-        path -> path.getFileName().toString().startsWith(localBlockID + ".block"))) {
-      return stream.iterator().hasNext();
-    }
+  private boolean chunkFileExists(KeyValueContainerData containerData, long localBlockID) {
+    return new File(containerData.getChunksPath(), localBlockID + ".block").exists();
   }
 
   @Test
@@ -406,7 +399,6 @@ public class TestContainerReconciliationWithMockDatanodes {
     assertEquals(initialBlockCount, containerData.getBlockCount(), "Block count should be unchanged");
     assertEquals(initialBytesUsed, containerData.getBytesUsed(), "Bytes used should be unchanged");
   }
-
 
   /**
    * Uses the on-demand container scanner metrics to wait for the expected number of on-demand scans to complete on
