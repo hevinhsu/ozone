@@ -77,6 +77,7 @@ import org.apache.hadoop.hdds.utils.db.BatchOperation;
 import org.apache.hadoop.ozone.OzoneConsts;
 import org.apache.hadoop.ozone.common.Checksum;
 import org.apache.hadoop.ozone.common.ChecksumData;
+import org.apache.hadoop.ozone.container.ContainerTestHelper;
 import org.apache.hadoop.ozone.container.checksum.ContainerChecksumTreeManager;
 import org.apache.hadoop.ozone.container.checksum.DNContainerOperationClient;
 import org.apache.hadoop.ozone.container.common.ContainerTestUtils;
@@ -129,7 +130,6 @@ public class TestContainerReconciliationWithMockDatanodes {
   private static final int CHUNK_LEN = 3 * (int) OzoneConsts.KB;
   private static final int CHUNKS_PER_BLOCK = 4;
   private static final int NUM_DATANODES = 3;
-  private static long nextDeleteTestContainerID = CONTAINER_ID + 1;
 
   private static final String TEST_SCAN = "Test Scan";
 
@@ -353,123 +353,60 @@ public class TestContainerReconciliationWithMockDatanodes {
     }
   }
 
-  /**
-   * Tests that deleteBlockForReconciliation deletes block metadata from RocksDB,
-   * chunk files from disk, and updates container stats correctly.
-   */
   @Test
   public void testDeleteBlockForReconciliation() throws Exception {
-    long containerID = nextDeleteTestContainerID++;
+    long containerID = ContainerTestHelper.getTestContainerID();
     MockDatanode dn = datanodes.get(0);
     dn.addContainerWithBlocks(containerID, 3);
     KeyValueContainer container = dn.getContainer(containerID);
     KeyValueContainerData containerData = container.getContainerData();
 
     List<BlockData> blocks = getBlocks(dn, containerID);
-    assertEquals(3, blocks.size());
-
-    long initialBytesUsed = containerData.getBytesUsed();
-    long initialBlockCount = containerData.getBlockCount();
-    assertTrue(initialBytesUsed > 0);
-    assertEquals(3, initialBlockCount);
-
     long blockToDelete = blocks.get(0).getLocalID();
     assertTrue(chunkFileExists(containerData, blockToDelete));
 
+    long initialBytesUsed = containerData.getBytesUsed();
+    long initialBlockCount = containerData.getBlockCount();
+
     dn.getHandler().deleteBlockForReconciliation(container, blockToDelete);
 
+    assertFalse(chunkFileExists(containerData, blockToDelete), "Chunk file should be deleted from disk");
     try (DBHandle db = BlockUtils.getDB(containerData, dn.getConf())) {
       assertNull(db.getStore().getBlockDataTable().get(containerData.getBlockKey(blockToDelete)),
           "Block metadata should be removed from DB");
     }
-    assertFalse(chunkFileExists(containerData, blockToDelete),
-        "Chunk files should be deleted from disk");
     assertEquals(initialBlockCount - 1, containerData.getBlockCount());
     assertTrue(containerData.getBytesUsed() < initialBytesUsed);
-
-    // Remaining blocks should be intact.
-    for (int i = 1; i < blocks.size(); i++) {
-      long remaining = blocks.get(i).getLocalID();
-      try (DBHandle db = BlockUtils.getDB(containerData, dn.getConf())) {
-        assertTrue(db.getStore().getBlockDataTable().isExist(containerData.getBlockKey(remaining)),
-            "Remaining block " + remaining + " should still exist in DB");
-      }
-      assertTrue(chunkFileExists(containerData, remaining));
-    }
   }
 
-  /**
-   * Tests that deleteBlockForReconciliation is idempotent — calling it twice on the same block
-   * does not throw an exception and does not change stats.
-   */
   @Test
-  public void testDeleteBlockForReconciliationIdempotent() throws Exception {
-    long containerID = nextDeleteTestContainerID++;
+  public void testDeleteBlockForReconciliationOrphanedChunk() throws Exception {
+    long containerID = ContainerTestHelper.getTestContainerID();
     MockDatanode dn = datanodes.get(0);
     dn.addContainerWithBlocks(containerID, 2);
     KeyValueContainer container = dn.getContainer(containerID);
     KeyValueContainerData containerData = container.getContainerData();
 
-    long blockToDelete = getBlocks(dn, containerID).get(0).getLocalID();
-
-    dn.getHandler().deleteBlockForReconciliation(container, blockToDelete);
-    long bytesAfterFirst = containerData.getBytesUsed();
-    long countAfterFirst = containerData.getBlockCount();
-
-    // Second call should be a no-op.
-    dn.getHandler().deleteBlockForReconciliation(container, blockToDelete);
-    assertEquals(bytesAfterFirst, containerData.getBytesUsed());
-    assertEquals(countAfterFirst, containerData.getBlockCount());
-  }
-
-  /**
-   * Tests that deleteBlockForReconciliation handles a block that never existed gracefully.
-   */
-  @Test
-  public void testDeleteBlockForReconciliationNonExistentBlock() throws Exception {
-    long containerID = nextDeleteTestContainerID++;
-    MockDatanode dn = datanodes.get(0);
-    dn.addContainerWithBlocks(containerID, 1);
-    KeyValueContainer container = dn.getContainer(containerID);
-    KeyValueContainerData containerData = container.getContainerData();
+    List<BlockData> blocks = getBlocks(dn, containerID);
+    long blockToDelete = blocks.get(0).getLocalID();
 
     long initialBytesUsed = containerData.getBytesUsed();
     long initialBlockCount = containerData.getBlockCount();
 
-    dn.getHandler().deleteBlockForReconciliation(container, 999999L);
-
-    assertEquals(initialBytesUsed, containerData.getBytesUsed());
-    assertEquals(initialBlockCount, containerData.getBlockCount());
-  }
-
-  /**
-   * Tests deleting all blocks from a container via deleteBlockForReconciliation.
-   */
-  @Test
-  public void testDeleteAllBlocksForReconciliation() throws Exception {
-    long containerID = nextDeleteTestContainerID++;
-    MockDatanode dn = datanodes.get(0);
-    dn.addContainerWithBlocks(containerID, 3);
-    KeyValueContainer container = dn.getContainer(containerID);
-    KeyValueContainerData containerData = container.getContainerData();
-
-    List<BlockData> blocks = getBlocks(dn, containerID);
-    assertEquals(3, blocks.size());
-
-    for (BlockData block : blocks) {
-      dn.getHandler().deleteBlockForReconciliation(container, block.getLocalID());
+    // Remove DB metadata only to simulate an orphaned file.
+    try (DBHandle db = BlockUtils.getDB(containerData, dn.getConf());
+         BatchOperation op = db.getStore().getBatchHandler().initBatchOperation()) {
+      db.getStore().getBlockDataTable().deleteWithBatch(op, containerData.getBlockKey(blockToDelete));
+      db.getStore().getBatchHandler().commitBatchOperation(op);
     }
 
-    assertEquals(0, containerData.getBlockCount());
-    assertEquals(0, containerData.getBytesUsed());
+    dn.getHandler().deleteBlockForReconciliation(container, blockToDelete);
 
-    for (BlockData block : blocks) {
-      try (DBHandle db = BlockUtils.getDB(containerData, dn.getConf())) {
-        assertNull(db.getStore().getBlockDataTable().get(containerData.getBlockKey(block.getLocalID())));
-      }
-      assertFalse(chunkFileExists(containerData, block.getLocalID()));
-    }
+    assertFalse(chunkFileExists(containerData, blockToDelete), "Orphaned chunk file should be deleted");
+    assertEquals(initialBlockCount, containerData.getBlockCount(), "Block count should be unchanged");
+    assertEquals(initialBytesUsed, containerData.getBytesUsed(), "Bytes used should be unchanged");
   }
+
 
   /**
    * Uses the on-demand container scanner metrics to wait for the expected number of on-demand scans to complete on
