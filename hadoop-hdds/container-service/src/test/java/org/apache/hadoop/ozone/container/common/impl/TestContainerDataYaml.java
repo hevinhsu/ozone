@@ -41,9 +41,15 @@ import org.apache.hadoop.ozone.container.common.helpers.ContainerUtils;
 import org.apache.hadoop.ozone.container.keyvalue.ContainerLayoutTestInfo;
 import org.apache.hadoop.ozone.container.keyvalue.KeyValueContainerData;
 import org.apache.hadoop.ozone.container.upgrade.VersionedDatanodeFeatures;
+import org.junit.jupiter.api.AfterEach;
+import org.junit.jupiter.api.Tag;
+import org.junit.jupiter.api.TestInfo;
 
 /**
  * This class tests create/read .container files.
+ *
+ * <p>By default, each test deletes {@code testRoot} in {@link AfterEach}.
+ * Tests that need to keep files should opt out with {@code @Tag("no-cleanup")}.
  */
 public class TestContainerDataYaml {
 
@@ -56,6 +62,7 @@ public class TestContainerDataYaml {
 
   private static final String VOLUME_OWNER = "hdfs";
   private static final String CONTAINER_DB_TYPE = "RocksDB";
+  private static final String NO_CLEANUP_TAG = "no-cleanup";
 
   private ContainerLayoutVersion layoutVersion;
   private OzoneConfiguration conf = new OzoneConfiguration();
@@ -65,8 +72,10 @@ public class TestContainerDataYaml {
   }
 
   /**
-   * Creates a .container file. cleanup() should be called at the end of the
-   * test when container file is created.
+   * Creates a .container file.
+   *
+   * <p>Cleanup is handled automatically by {@link AfterEach}. Tests that need
+   * to keep files must opt out with {@code @Tag(NO_CLEANUP_TAG)}.
    */
   private File createContainerFile(long containerID, int replicaIndex)
       throws IOException {
@@ -98,7 +107,16 @@ public class TestContainerDataYaml {
     return containerFile;
   }
 
-  private void cleanup() {
+  /**
+   * Default cleanup for all tests in this class.
+   *
+   * <p>Use {@code @Tag(NO_CLEANUP_TAG)} on tests that should skip cleanup.
+   */
+  @AfterEach
+  void cleanup(TestInfo testInfo) {
+    if (testInfo.getTags().contains(NO_CLEANUP_TAG)) {
+      return;
+    }
     FileUtil.fullyDelete(new File(testRoot));
   }
 
@@ -166,8 +184,6 @@ public class TestContainerDataYaml {
         kvData.lastDataScanTime().get().toEpochMilli());
     assertEquals(SCAN_TIME.toEpochMilli(),
         kvData.getDataScanTimestamp().longValue());
-
-    cleanup();
   }
 
   @ContainerLayoutTestInfo.ContainerTest
@@ -184,9 +200,9 @@ public class TestContainerDataYaml {
     assertThat(content)
         .withFailMessage("ReplicaIndex shouldn't be persisted if zero")
         .doesNotContain("replicaIndex");
-    cleanup();
   }
 
+  @Tag(NO_CLEANUP_TAG)
   @ContainerLayoutTestInfo.ContainerTest
   public void testIncorrectContainerFile(ContainerLayoutVersion layout) {
     setLayoutVersion(layout);
@@ -202,6 +218,7 @@ public class TestContainerDataYaml {
   }
 
   @ContainerLayoutTestInfo.ContainerTest
+  @Tag(NO_CLEANUP_TAG)
   void testCheckBackWardCompatibilityOfContainerFile(
       ContainerLayoutVersion layout) throws Exception {
     setLayoutVersion(layout);
@@ -246,8 +263,6 @@ public class TestContainerDataYaml {
     // Read from .container file, and verify data.
     KeyValueContainerData kvData = (KeyValueContainerData) ContainerDataYaml.readContainerFile(containerFile);
     ContainerUtils.verifyContainerFileChecksum(kvData, conf);
-
-    cleanup();
   }
 
   /**
@@ -265,8 +280,6 @@ public class TestContainerDataYaml {
     // file.
     KeyValueContainerData kvData = (KeyValueContainerData) ContainerDataYaml.readContainerFile(containerFile);
     assertEquals(0, kvData.getDataChecksum());
-
-    cleanup();
   }
 
   /**
@@ -284,8 +297,6 @@ public class TestContainerDataYaml {
     KeyValueContainerData kvData = (KeyValueContainerData) ContainerDataYaml
         .readContainerFile(containerFile);
     ContainerUtils.verifyContainerFileChecksum(kvData, conf);
-
-    cleanup();
   }
 
   private KeyValueContainerData getKeyValueContainerData() throws IOException {
@@ -299,6 +310,7 @@ public class TestContainerDataYaml {
   /**
    * Test to verify incorrect checksum is detected.
    */
+  @Tag(NO_CLEANUP_TAG)
   @ContainerLayoutTestInfo.ContainerTest
   public void testIncorrectChecksum(ContainerLayoutVersion layout) {
     setLayoutVersion(layout);
@@ -313,6 +325,7 @@ public class TestContainerDataYaml {
   /**
    * Test to verify disabled checksum with incorrect checksum.
    */
+  @Tag(NO_CLEANUP_TAG)
   @ContainerLayoutTestInfo.ContainerTest
   public void testDisabledChecksum(ContainerLayoutVersion layout)
       throws IOException {
