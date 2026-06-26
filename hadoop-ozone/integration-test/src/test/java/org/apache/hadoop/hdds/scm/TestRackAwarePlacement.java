@@ -128,8 +128,7 @@ public class TestRackAwarePlacement {
 
   @Nested
   @TestInstance(TestInstance.Lifecycle.PER_CLASS)
-  @SuppressWarnings("SIC_INNER_SHOULD_BE_STATIC")
-  class WithRacksAndHosts {
+  static class WithRacksAndHosts {
 
     private MiniOzoneCluster cluster;
 
@@ -175,8 +174,7 @@ public class TestRackAwarePlacement {
 
   @Nested
   @TestInstance(TestInstance.Lifecycle.PER_CLASS)
-  @SuppressWarnings("SIC_INNER_SHOULD_BE_STATIC")
-  class WithRacksOnly {
+  static class WithRacksOnly {
 
     private MiniOzoneCluster cluster;
 
@@ -216,8 +214,7 @@ public class TestRackAwarePlacement {
 
   @Nested
   @TestInstance(TestInstance.Lifecycle.PER_CLASS)
-  @SuppressWarnings("SIC_INNER_SHOULD_BE_STATIC")
-  class WithHostsOnly {
+  static class WithHostsOnly {
 
     private MiniOzoneCluster cluster;
 
