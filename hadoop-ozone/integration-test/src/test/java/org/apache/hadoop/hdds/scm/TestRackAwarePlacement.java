@@ -47,7 +47,6 @@ import org.apache.hadoop.ozone.client.OzoneBucket;
 import org.apache.hadoop.ozone.client.OzoneClient;
 import org.apache.hadoop.ozone.client.OzoneVolume;
 import org.apache.hadoop.ozone.client.io.OzoneOutputStream;
-import org.apache.hadoop.ozone.container.TestHelper;
 import org.apache.ozone.test.GenericTestUtils;
 import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.BeforeAll;
@@ -57,7 +56,7 @@ import org.junit.jupiter.api.TestInstance;
 
 /**
  * Integration tests that verify rack/host topology is correctly propagated
- * to SCM and that pipeline placement respects rack boundaries.
+ * to SCM and that pipeline and container placement respect rack boundaries.
  *
  * <p>Three scenarios are covered:
  * <ol>
@@ -84,14 +83,26 @@ public class TestRackAwarePlacement {
       "host3.test", "host4.test", "host5.test"
   };
 
-  // -----------------------------------------------------------------------
-  // Scenario 1: racks + hosts both configured
-  // -----------------------------------------------------------------------
+  private static void applyReplicationSpeedupConfig(OzoneConfiguration conf) {
+    conf.setTimeDuration(ScmConfigKeys.OZONE_SCM_HEARTBEAT_PROCESS_INTERVAL,
+        100, TimeUnit.MILLISECONDS);
+    conf.setTimeDuration(ScmConfigKeys.OZONE_SCM_STALENODE_INTERVAL,
+        3, TimeUnit.SECONDS);
+    conf.setTimeDuration(ScmConfigKeys.OZONE_SCM_DEADNODE_INTERVAL,
+        6, TimeUnit.SECONDS);
+    conf.setTimeDuration("hdds.scm.replication.thread.interval",
+        1, TimeUnit.SECONDS);
+    conf.setTimeDuration("hdds.scm.replication.under.replicated.interval",
+        5, TimeUnit.SECONDS);
+    conf.setTimeDuration("hdds.scm.replication.over.replicated.interval",
+        5, TimeUnit.SECONDS);
+  }
 
   /**
    * Verifies topology behaviour when both racks and hostnames are explicitly
-   * configured. Pipelines should span multiple racks and each datanode should
-   * report the configured hostname.
+   * configured. Pipelines should span multiple racks, each datanode should
+   * report the configured hostname, and re-replicated container replicas
+   * should remain rack-diverse.
    */
   @Nested
   @TestInstance(TestInstance.Lifecycle.PER_CLASS)
@@ -102,21 +113,7 @@ public class TestRackAwarePlacement {
     @BeforeAll
     void init() throws Exception {
       OzoneConfiguration conf = new OzoneConfiguration();
-
-      // 加速 DN 狀態偵測與 ReplicationManager 執行
-      conf.setTimeDuration(ScmConfigKeys.OZONE_SCM_HEARTBEAT_PROCESS_INTERVAL,
-          100, TimeUnit.MILLISECONDS);
-      conf.setTimeDuration(ScmConfigKeys.OZONE_SCM_STALENODE_INTERVAL,
-          3, TimeUnit.SECONDS);
-      conf.setTimeDuration(ScmConfigKeys.OZONE_SCM_DEADNODE_INTERVAL,
-          6, TimeUnit.SECONDS);
-      conf.setTimeDuration("hdds.scm.replication.thread.interval",
-          1, TimeUnit.SECONDS);
-      conf.setTimeDuration("hdds.scm.replication.under.replicated.interval",
-          5, TimeUnit.SECONDS);
-      conf.setTimeDuration("hdds.scm.replication.over.replicated.interval",
-          5, TimeUnit.SECONDS);
-
+      applyReplicationSpeedupConfig(conf);
       cluster = MiniOzoneCluster.newBuilder(conf)
           .setRacks(RACKS)
           .setHosts(HOSTS)
@@ -149,92 +146,14 @@ public class TestRackAwarePlacement {
 
     @Test
     void testContainerReplicationIsRackAware() throws Exception {
-      StorageContainerManager scm =
-          cluster.getStorageContainerManager();
-
-      // 1. 用 OzoneClient 實際寫入資料，讓 DN 建立 container
-      try (OzoneClient client = cluster.newClient()) {
-        ObjectStore store = client.getObjectStore();
-        store.createVolume("testvol");
-        OzoneVolume volume = store.getVolume("testvol");
-        volume.createBucket("testbucket");
-        OzoneBucket bucket = volume.getBucket("testbucket");
-
-        byte[] data = "test-data".getBytes(StandardCharsets.UTF_8);
-        try (OzoneOutputStream out = bucket.createKey(
-            "testkey", data.length,
-            RatisReplicationConfig.getInstance(ReplicationFactor.THREE),
-            new HashMap<>())) {
-          out.write(data);
-        }
-      }
-
-      // 2. 找到有 3 個 replica 的 container
-      ContainerInfo targetContainer = null;
-      Set<ContainerReplica> replicas = null;
-      for (ContainerInfo c : scm.getContainerManager().getContainers()) {
-        Set<ContainerReplica> r =
-            scm.getContainerManager().getContainerReplicas(c.containerID());
-        if (r.size() >= 3) {
-          targetContainer = c;
-          replicas = r;
-          break;
-        }
-      }
-      assertNotNull(targetContainer, "Should find a container with 3 replicas");
-      ContainerID containerID = targetContainer.containerID();
-
-      // 3. 停掉其中一個 replica 所在的 DN
-      DatanodeDetails stoppedDn =
-          replicas.iterator().next().getDatanodeDetails();
-      cluster.shutdownHddsDatanode(stoppedDn);
-
-      // 4. 等 SCM 把這個 DN 標記為 DEAD
-      GenericTestUtils.waitFor(() -> {
-        try {
-          return scm.getScmNodeManager()
-              .getNodeStatus(stoppedDn)
-              .getHealth() == HddsProtos.NodeState.DEAD;
-        } catch (Exception e) {
-          return false;
-        }
-      }, 500, 30_000);
-
-      // 5. 等 ReplicationManager 補上新的 replica
-      GenericTestUtils.waitFor(() -> {
-        try {
-          return scm.getContainerManager()
-              .getContainerReplicas(containerID)
-              .size() >= 3;
-        } catch (Exception e) {
-          return false;
-        }
-      }, 1_000, 60_000);
-      TestHelper.waitForReplicaCount(containerID.getId(), 3, cluster);
-
-
-      // 6. 驗證新的 replica 組合仍然跨 rack
-      Set<String> racks = scm.getContainerManager()
-          .getContainerReplicas(containerID)
-          .stream()
-          .map(r -> r.getDatanodeDetails().getNetworkLocation())
-          .collect(Collectors.toSet());
-
-      assertTrue(racks.size() >= 2,
-          "Container replicas after re-replication should span at least 2 racks, "
-              + "but were on: " + racks);
+      assertContainerReplicationIsRackAware(cluster);
     }
-
   }
-
-  // -----------------------------------------------------------------------
-  // Scenario 2: racks only, no explicit hosts
-  // -----------------------------------------------------------------------
 
   /**
    * Verifies topology behaviour when only racks are configured and hostnames
    * are left to the cluster default. Pipelines should still span multiple
-   * racks; hostname values are not asserted in this scenario.
+   * racks and re-replicated container replicas should remain rack-diverse.
    */
   @Nested
   @TestInstance(TestInstance.Lifecycle.PER_CLASS)
@@ -245,6 +164,7 @@ public class TestRackAwarePlacement {
     @BeforeAll
     void init() throws Exception {
       OzoneConfiguration conf = new OzoneConfiguration();
+      applyReplicationSpeedupConfig(conf);
       cluster = MiniOzoneCluster.newBuilder(conf)
           .setRacks(RACKS)
           .build();
@@ -268,19 +188,18 @@ public class TestRackAwarePlacement {
     void testRatisPipelineSpansMultipleRacks() {
       assertPipelinesSpanMultipleRacks(cluster);
     }
-  }
 
-  // -----------------------------------------------------------------------
-  // Scenario 3: hosts only, no racks
-  // -----------------------------------------------------------------------
+    @Test
+    void testContainerReplicationIsRackAware() throws Exception {
+      assertContainerReplicationIsRackAware(cluster);
+    }
+  }
 
   /**
    * Verifies behaviour when only hostnames are configured and no rack
    * information is provided. All datanodes should fall back to
    * {@link NetworkTopology#DEFAULT_RACK} and each node should report the
    * configured hostname.
-   *
-   * <p>Pipelines are not expected to span multiple racks in this scenario.
    */
   @Nested
   @TestInstance(TestInstance.Lifecycle.PER_CLASS)
@@ -324,11 +243,77 @@ public class TestRackAwarePlacement {
     }
   }
 
-  // -----------------------------------------------------------------------
-  // Shared assertion helpers
-  // -----------------------------------------------------------------------
+  private static void assertContainerReplicationIsRackAware(
+      MiniOzoneCluster cluster) throws Exception {
+    StorageContainerManager scm = cluster.getStorageContainerManager();
 
-  private void assertRackAssignments(MiniOzoneCluster cluster,
+    try (OzoneClient client = cluster.newClient()) {
+      ObjectStore store = client.getObjectStore();
+      store.createVolume("testvol");
+      OzoneVolume volume = store.getVolume("testvol");
+      volume.createBucket("testbucket");
+      OzoneBucket bucket = volume.getBucket("testbucket");
+
+      byte[] data = "test-data".getBytes(StandardCharsets.UTF_8);
+      try (OzoneOutputStream out = bucket.createKey(
+          "testkey", data.length,
+          RatisReplicationConfig.getInstance(ReplicationFactor.THREE),
+          new HashMap<>())) {
+        out.write(data);
+      }
+    }
+
+    ContainerInfo targetContainer = null;
+    Set<ContainerReplica> replicas = null;
+    for (ContainerInfo c : scm.getContainerManager().getContainers()) {
+      Set<ContainerReplica> r =
+          scm.getContainerManager().getContainerReplicas(c.containerID());
+      if (r.size() >= 3) {
+        targetContainer = c;
+        replicas = r;
+        break;
+      }
+    }
+    assertNotNull(targetContainer,
+        "Should find a container with 3 replicas");
+    ContainerID containerID = targetContainer.containerID();
+
+    DatanodeDetails stoppedDn =
+        replicas.iterator().next().getDatanodeDetails();
+    cluster.shutdownHddsDatanode(stoppedDn);
+
+    GenericTestUtils.waitFor(() -> {
+      try {
+        return scm.getScmNodeManager()
+            .getNodeStatus(stoppedDn)
+            .getHealth() == HddsProtos.NodeState.DEAD;
+      } catch (Exception e) {
+        return false;
+      }
+    }, 500, 30_000);
+
+    GenericTestUtils.waitFor(() -> {
+      try {
+        return scm.getContainerManager()
+            .getContainerReplicas(containerID)
+            .size() >= 3;
+      } catch (Exception e) {
+        return false;
+      }
+    }, 1_000, 60_000);
+
+    Set<String> racks = scm.getContainerManager()
+        .getContainerReplicas(containerID)
+        .stream()
+        .map(r -> r.getDatanodeDetails().getNetworkLocation())
+        .collect(Collectors.toSet());
+
+    assertTrue(racks.size() >= 2,
+        "Container replicas after re-replication should span at least "
+            + "2 racks, but were on: " + racks);
+  }
+
+  private static void assertRackAssignments(MiniOzoneCluster cluster,
                                             String[] expectedRacks) {
     NodeManager nodeManager =
         cluster.getStorageContainerManager().getScmNodeManager();
@@ -337,7 +322,6 @@ public class TestRackAwarePlacement {
     assertEquals(expectedRacks.length, allNodes.size(),
         "Number of registered datanodes should match number of configured racks");
 
-    // Collect actual rack counts
     long actualRack0 = allNodes.stream()
         .filter(dn -> RACK0.equals(dn.getNetworkLocation()))
         .count();
@@ -345,25 +329,27 @@ public class TestRackAwarePlacement {
         .filter(dn -> RACK1.equals(dn.getNetworkLocation()))
         .count();
 
-    long expectedRack0 = Arrays.stream(expectedRacks).filter(RACK0::equals).count();
-    long expectedRack1 = Arrays.stream(expectedRacks).filter(RACK1::equals).count();
+    long expectedRack0 =
+        Arrays.stream(expectedRacks).filter(RACK0::equals).count();
+    long expectedRack1 =
+        Arrays.stream(expectedRacks).filter(RACK1::equals).count();
 
     assertEquals(expectedRack0, actualRack0,
         "Expected " + expectedRack0 + " datanodes on " + RACK0);
     assertEquals(expectedRack1, actualRack1,
         "Expected " + expectedRack1 + " datanodes on " + RACK1);
 
-    // Every node must be in a known rack
     for (DatanodeDetails dn : allNodes) {
       String location = dn.getNetworkLocation();
       assertNotNull(location,
           "Network location must not be null for " + dn.getHostName());
       assertTrue(location.equals(RACK0) || location.equals(RACK1),
-          "Unexpected rack for datanode " + dn.getHostName() + ": " + location);
+          "Unexpected rack for datanode " + dn.getHostName()
+              + ": " + location);
     }
   }
 
-  private void assertHostnameAssignments(MiniOzoneCluster cluster,
+  private static void assertHostnameAssignments(MiniOzoneCluster cluster,
                                                 String[] expectedHosts) {
     NodeManager nodeManager =
         cluster.getStorageContainerManager().getScmNodeManager();
@@ -383,10 +369,12 @@ public class TestRackAwarePlacement {
         "Registered datanode hostnames should match configured hosts");
   }
 
-  private void assertPipelinesSpanMultipleRacks(MiniOzoneCluster cluster) {
+  private static void assertPipelinesSpanMultipleRacks(
+      MiniOzoneCluster cluster) {
     List<Pipeline> pipelines = cluster.getStorageContainerManager()
         .getPipelineManager()
-        .getPipelines(RatisReplicationConfig.getInstance(ReplicationFactor.THREE),
+        .getPipelines(
+            RatisReplicationConfig.getInstance(ReplicationFactor.THREE),
             Pipeline.PipelineState.OPEN);
 
     assertFalse(pipelines.isEmpty(),
