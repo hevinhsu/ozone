@@ -22,18 +22,33 @@ import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
+import java.nio.charset.StandardCharsets;
 import java.util.Arrays;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Set;
+import java.util.concurrent.TimeUnit;
 import java.util.stream.Collectors;
 import org.apache.hadoop.hdds.client.RatisReplicationConfig;
 import org.apache.hadoop.hdds.conf.OzoneConfiguration;
 import org.apache.hadoop.hdds.protocol.DatanodeDetails;
+import org.apache.hadoop.hdds.protocol.proto.HddsProtos;
 import org.apache.hadoop.hdds.protocol.proto.HddsProtos.ReplicationFactor;
+import org.apache.hadoop.hdds.scm.container.ContainerID;
+import org.apache.hadoop.hdds.scm.container.ContainerInfo;
+import org.apache.hadoop.hdds.scm.container.ContainerReplica;
 import org.apache.hadoop.hdds.scm.node.NodeManager;
 import org.apache.hadoop.hdds.scm.pipeline.Pipeline;
+import org.apache.hadoop.hdds.scm.server.StorageContainerManager;
 import org.apache.hadoop.net.NetworkTopology;
 import org.apache.hadoop.ozone.MiniOzoneCluster;
+import org.apache.hadoop.ozone.client.ObjectStore;
+import org.apache.hadoop.ozone.client.OzoneBucket;
+import org.apache.hadoop.ozone.client.OzoneClient;
+import org.apache.hadoop.ozone.client.OzoneVolume;
+import org.apache.hadoop.ozone.client.io.OzoneOutputStream;
+import org.apache.hadoop.ozone.container.TestHelper;
+import org.apache.ozone.test.GenericTestUtils;
 import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.Nested;
@@ -87,6 +102,21 @@ public class TestRackAwarePlacement {
     @BeforeAll
     void init() throws Exception {
       OzoneConfiguration conf = new OzoneConfiguration();
+
+      // 加速 DN 狀態偵測與 ReplicationManager 執行
+      conf.setTimeDuration(ScmConfigKeys.OZONE_SCM_HEARTBEAT_PROCESS_INTERVAL,
+          100, TimeUnit.MILLISECONDS);
+      conf.setTimeDuration(ScmConfigKeys.OZONE_SCM_STALENODE_INTERVAL,
+          3, TimeUnit.SECONDS);
+      conf.setTimeDuration(ScmConfigKeys.OZONE_SCM_DEADNODE_INTERVAL,
+          6, TimeUnit.SECONDS);
+      conf.setTimeDuration("hdds.scm.replication.thread.interval",
+          1, TimeUnit.SECONDS);
+      conf.setTimeDuration("hdds.scm.replication.under.replicated.interval",
+          5, TimeUnit.SECONDS);
+      conf.setTimeDuration("hdds.scm.replication.over.replicated.interval",
+          5, TimeUnit.SECONDS);
+
       cluster = MiniOzoneCluster.newBuilder(conf)
           .setRacks(RACKS)
           .setHosts(HOSTS)
@@ -116,6 +146,85 @@ public class TestRackAwarePlacement {
     void testRatisPipelineSpansMultipleRacks() {
       assertPipelinesSpanMultipleRacks(cluster);
     }
+
+    @Test
+    void testContainerReplicationIsRackAware() throws Exception {
+      StorageContainerManager scm =
+          cluster.getStorageContainerManager();
+
+      // 1. 用 OzoneClient 實際寫入資料，讓 DN 建立 container
+      try (OzoneClient client = cluster.newClient()) {
+        ObjectStore store = client.getObjectStore();
+        store.createVolume("testvol");
+        OzoneVolume volume = store.getVolume("testvol");
+        volume.createBucket("testbucket");
+        OzoneBucket bucket = volume.getBucket("testbucket");
+
+        byte[] data = "test-data".getBytes(StandardCharsets.UTF_8);
+        try (OzoneOutputStream out = bucket.createKey(
+            "testkey", data.length,
+            RatisReplicationConfig.getInstance(ReplicationFactor.THREE),
+            new HashMap<>())) {
+          out.write(data);
+        }
+      }
+
+      // 2. 找到有 3 個 replica 的 container
+      ContainerInfo targetContainer = null;
+      Set<ContainerReplica> replicas = null;
+      for (ContainerInfo c : scm.getContainerManager().getContainers()) {
+        Set<ContainerReplica> r =
+            scm.getContainerManager().getContainerReplicas(c.containerID());
+        if (r.size() >= 3) {
+          targetContainer = c;
+          replicas = r;
+          break;
+        }
+      }
+      assertNotNull(targetContainer, "Should find a container with 3 replicas");
+      ContainerID containerID = targetContainer.containerID();
+
+      // 3. 停掉其中一個 replica 所在的 DN
+      DatanodeDetails stoppedDn =
+          replicas.iterator().next().getDatanodeDetails();
+      cluster.shutdownHddsDatanode(stoppedDn);
+
+      // 4. 等 SCM 把這個 DN 標記為 DEAD
+      GenericTestUtils.waitFor(() -> {
+        try {
+          return scm.getScmNodeManager()
+              .getNodeStatus(stoppedDn)
+              .getHealth() == HddsProtos.NodeState.DEAD;
+        } catch (Exception e) {
+          return false;
+        }
+      }, 500, 30_000);
+
+      // 5. 等 ReplicationManager 補上新的 replica
+      GenericTestUtils.waitFor(() -> {
+        try {
+          return scm.getContainerManager()
+              .getContainerReplicas(containerID)
+              .size() >= 3;
+        } catch (Exception e) {
+          return false;
+        }
+      }, 1_000, 60_000);
+      TestHelper.waitForReplicaCount(containerID.getId(), 3, cluster);
+
+
+      // 6. 驗證新的 replica 組合仍然跨 rack
+      Set<String> racks = scm.getContainerManager()
+          .getContainerReplicas(containerID)
+          .stream()
+          .map(r -> r.getDatanodeDetails().getNetworkLocation())
+          .collect(Collectors.toSet());
+
+      assertTrue(racks.size() >= 2,
+          "Container replicas after re-replication should span at least 2 racks, "
+              + "but were on: " + racks);
+    }
+
   }
 
   // -----------------------------------------------------------------------
