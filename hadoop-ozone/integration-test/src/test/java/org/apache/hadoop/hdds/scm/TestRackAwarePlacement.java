@@ -106,7 +106,7 @@ public class TestRackAwarePlacement {
    */
   @Nested
   @TestInstance(TestInstance.Lifecycle.PER_CLASS)
-  class WithRacksAndHosts {
+  static class WithRacksAndHosts {
 
     private MiniOzoneCluster cluster;
 
@@ -157,7 +157,7 @@ public class TestRackAwarePlacement {
    */
   @Nested
   @TestInstance(TestInstance.Lifecycle.PER_CLASS)
-  class WithRacksOnly {
+  static class WithRacksOnly {
 
     private MiniOzoneCluster cluster;
 
@@ -203,7 +203,7 @@ public class TestRackAwarePlacement {
    */
   @Nested
   @TestInstance(TestInstance.Lifecycle.PER_CLASS)
-  class WithHostsOnly {
+  static class WithHostsOnly {
 
     private MiniOzoneCluster cluster;
 
