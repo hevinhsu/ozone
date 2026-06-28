@@ -16,4 +16,5 @@
    limitations under the License.
 -->
 <FindBugsFilter>
+  <excludeFilterFile>${basedir}/dev-support/findbugsExcludeFile.xml</excludeFilterFile>
 </FindBugsFilter>

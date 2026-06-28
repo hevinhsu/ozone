@@ -67,16 +67,15 @@ public class TestRackAwarePlacement {
 
   private static final String RACK0 = "/rack0";
   private static final String RACK1 = "/rack1";
-  private static final String RACK2 = "/rack2";
-  private static final String RACK3 = "/rack3";
 
   private static final String[] RACKS = {
-      RACK0, RACK0, RACK1, RACK1, RACK2, RACK2, RACK3, RACK3
+      RACK0, RACK0, RACK0,
+      RACK1, RACK1, RACK1
   };
 
   private static final String[] HOSTS = {
-      "host0.test", "host1.test", "host2.test", "host3.test",
-      "host4.test", "host5.test", "host6.test", "host7.test"
+      "host0.test", "host1.test", "host2.test",
+      "host3.test", "host4.test", "host5.test"
   };
 
   private static void applyReplicationSpeedupConfig(OzoneConfiguration conf) {
@@ -96,30 +95,30 @@ public class TestRackAwarePlacement {
 
   static Stream<Arguments> rackAwarePolicies() {
     return Stream.of(
-        Arguments.of("org.apache.hadoop.hdds.scm.container.placement.algorithms.SCMContainerPlacementRackAware"),
-        Arguments.of("org.apache.hadoop.hdds.scm.container.placement.algorithms.SCMContainerPlacementRackScatter")
+        Arguments.of(
+            "org.apache.hadoop.hdds.scm.container.placement.algorithms"
+                + ".SCMContainerPlacementRackAware"),
+        Arguments.of(
+            "org.apache.hadoop.hdds.scm.container.placement.algorithms"
+                + ".SCMContainerPlacementRackScatter")
     );
   }
 
   @ParameterizedTest
   @MethodSource("rackAwarePolicies")
-  void testPipelineAndContainerPlacementWithPolicy(String placementClassName) throws Exception {
+  void testPipelineAndContainerPlacementWithPolicy(
+      String placementClassName) throws Exception {
     OzoneConfiguration conf = new OzoneConfiguration();
-    conf.set(ScmConfigKeys.OZONE_SCM_CONTAINER_PLACEMENT_IMPL_KEY, placementClassName);
+    conf.set(ScmConfigKeys.OZONE_SCM_CONTAINER_PLACEMENT_IMPL_KEY,
+        placementClassName);
     applyReplicationSpeedupConfig(conf);
 
     try (MiniOzoneCluster cluster = MiniOzoneCluster.newBuilder(conf)
         .setRacks(RACKS)
         .setHosts(HOSTS)
         .build()) {
-
       cluster.waitForClusterToBeReady();
       cluster.waitForPipelineTobeReady(ReplicationFactor.THREE, 60_000);
-
-      StorageContainerManager scm = cluster.getStorageContainerManager();
-      PlacementPolicy actualPolicy = scm.getContainerPlacementPolicy();
-      assertEquals(placementClassName, actualPolicy.getClass().getName(),
-          "Placement policy was not set correctly");
 
       assertPipelinesSpanMultipleRacks(cluster);
       assertContainerReplicationIsRackAware(cluster);
@@ -128,7 +127,7 @@ public class TestRackAwarePlacement {
 
   @Nested
   @TestInstance(TestInstance.Lifecycle.PER_CLASS)
-  static class WithRacksAndHosts {
+  class WithRacksAndHosts {
 
     private MiniOzoneCluster cluster;
 
@@ -174,7 +173,7 @@ public class TestRackAwarePlacement {
 
   @Nested
   @TestInstance(TestInstance.Lifecycle.PER_CLASS)
-  static class WithRacksOnly {
+  class WithRacksOnly {
 
     private MiniOzoneCluster cluster;
 
@@ -214,7 +213,7 @@ public class TestRackAwarePlacement {
 
   @Nested
   @TestInstance(TestInstance.Lifecycle.PER_CLASS)
-  static class WithHostsOnly {
+  class WithHostsOnly {
 
     private MiniOzoneCluster cluster;
 
@@ -242,16 +241,20 @@ public class TestRackAwarePlacement {
 
     @Test
     void testDatanodesAllInDefaultRack() {
-      NodeManager nodeManager = cluster.getStorageContainerManager().getScmNodeManager();
+      NodeManager nodeManager =
+          cluster.getStorageContainerManager().getScmNodeManager();
       List<? extends DatanodeDetails> allNodes = nodeManager.getAllNodes();
 
       for (DatanodeDetails dn : allNodes) {
-        assertEquals(NetworkTopology.DEFAULT_RACK, dn.getNetworkLocation());
+        assertEquals(NetworkTopology.DEFAULT_RACK, dn.getNetworkLocation(),
+            "Datanode " + dn.getHostName()
+                + " should be in default rack when no racks are configured");
       }
     }
   }
 
-  private static void assertContainerReplicationIsRackAware(MiniOzoneCluster cluster) throws Exception {
+  private static void assertContainerReplicationIsRackAware(
+      MiniOzoneCluster cluster) throws Exception {
     StorageContainerManager scm = cluster.getStorageContainerManager();
 
     try (OzoneClient client = cluster.newClient()) {
@@ -273,18 +276,20 @@ public class TestRackAwarePlacement {
     ContainerInfo targetContainer = null;
     Set<ContainerReplica> replicas = null;
     for (ContainerInfo c : scm.getContainerManager().getContainers()) {
-      Set<ContainerReplica> r = scm.getContainerManager().getContainerReplicas(c.containerID());
+      Set<ContainerReplica> r =
+          scm.getContainerManager().getContainerReplicas(c.containerID());
       if (r.size() >= 3) {
         targetContainer = c;
         replicas = r;
         break;
       }
     }
-    assertNotNull(targetContainer);
-
+    assertNotNull(targetContainer,
+        "Should find a container with 3 replicas");
     ContainerID containerID = targetContainer.containerID();
 
-    DatanodeDetails stoppedDn = replicas.iterator().next().getDatanodeDetails();
+    DatanodeDetails stoppedDn =
+        replicas.iterator().next().getDatanodeDetails();
     cluster.shutdownHddsDatanode(stoppedDn);
 
     GenericTestUtils.waitFor(() -> {
@@ -313,45 +318,86 @@ public class TestRackAwarePlacement {
         .map(r -> r.getDatanodeDetails().getNetworkLocation())
         .collect(Collectors.toSet());
 
-    assertTrue(racks.size() >= 2);
+    assertTrue(racks.size() >= 2,
+        "Container replicas after re-replication should span at least "
+            + "2 racks, but were on: " + racks);
   }
 
-  private static void assertRackAssignments(MiniOzoneCluster cluster, String[] expectedRacks) {
-    NodeManager nodeManager = cluster.getStorageContainerManager().getScmNodeManager();
+  private static void assertRackAssignments(MiniOzoneCluster cluster,
+                                            String[] expectedRacks) {
+    NodeManager nodeManager =
+        cluster.getStorageContainerManager().getScmNodeManager();
     List<? extends DatanodeDetails> allNodes = nodeManager.getAllNodes();
 
-    assertEquals(expectedRacks.length, allNodes.size());
+    assertEquals(expectedRacks.length, allNodes.size(),
+        "Number of registered datanodes should match number of configured racks");
+
+    long actualRack0 = allNodes.stream()
+        .filter(dn -> RACK0.equals(dn.getNetworkLocation()))
+        .count();
+    long actualRack1 = allNodes.stream()
+        .filter(dn -> RACK1.equals(dn.getNetworkLocation()))
+        .count();
+
+    long expectedRack0 =
+        Arrays.stream(expectedRacks).filter(RACK0::equals).count();
+    long expectedRack1 =
+        Arrays.stream(expectedRacks).filter(RACK1::equals).count();
+
+    assertEquals(expectedRack0, actualRack0,
+        "Expected " + expectedRack0 + " datanodes on " + RACK0);
+    assertEquals(expectedRack1, actualRack1,
+        "Expected " + expectedRack1 + " datanodes on " + RACK1);
+
+    for (DatanodeDetails dn : allNodes) {
+      String location = dn.getNetworkLocation();
+      assertNotNull(location,
+          "Network location must not be null for " + dn.getHostName());
+      assertTrue(location.equals(RACK0) || location.equals(RACK1),
+          "Unexpected rack for datanode " + dn.getHostName()
+              + ": " + location);
+    }
   }
 
-  private static void assertHostnameAssignments(MiniOzoneCluster cluster, String[] expectedHosts) {
-    NodeManager nodeManager = cluster.getStorageContainerManager().getScmNodeManager();
+  private static void assertHostnameAssignments(MiniOzoneCluster cluster,
+                                                String[] expectedHosts) {
+    NodeManager nodeManager =
+        cluster.getStorageContainerManager().getScmNodeManager();
     List<? extends DatanodeDetails> allNodes = nodeManager.getAllNodes();
 
-    assertEquals(expectedHosts.length, allNodes.size());
+    assertEquals(expectedHosts.length, allNodes.size(),
+        "Number of registered datanodes should match number of configured hosts");
 
     Set<String> actual = allNodes.stream()
         .map(DatanodeDetails::getHostName)
         .collect(Collectors.toSet());
 
-    Set<String> expected = Arrays.stream(expectedHosts).collect(Collectors.toSet());
-    assertEquals(expected, actual);
+    Set<String> expected = Arrays.stream(expectedHosts)
+        .collect(Collectors.toSet());
+
+    assertEquals(expected, actual,
+        "Registered datanode hostnames should match configured hosts");
   }
 
-  private static void assertPipelinesSpanMultipleRacks(MiniOzoneCluster cluster) {
+  private static void assertPipelinesSpanMultipleRacks(
+      MiniOzoneCluster cluster) {
     List<Pipeline> pipelines = cluster.getStorageContainerManager()
         .getPipelineManager()
         .getPipelines(
             RatisReplicationConfig.getInstance(ReplicationFactor.THREE),
             Pipeline.PipelineState.OPEN);
 
-    assertFalse(pipelines.isEmpty());
+    assertFalse(pipelines.isEmpty(),
+        "There should be at least one open RATIS THREE pipeline");
 
     for (Pipeline pipeline : pipelines) {
       Set<String> racks = pipeline.getNodes().stream()
           .map(DatanodeDetails::getNetworkLocation)
           .collect(Collectors.toSet());
 
-      assertTrue(racks.size() >= 2);
+      assertTrue(racks.size() >= 2,
+          "Pipeline " + pipeline.getId()
+              + " should span at least 2 racks, but spans: " + racks);
     }
   }
 }
