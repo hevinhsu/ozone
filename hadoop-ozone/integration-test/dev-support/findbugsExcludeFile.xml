@@ -16,5 +16,8 @@
    limitations under the License.
 -->
 <FindBugsFilter>
-  <excludeFilterFile>${basedir}/dev-support/findbugsExcludeFile.xml</excludeFilterFile>
+  <Match>
+    <Class name="org.apache.hadoop.hdds.scm.TestRackAwarePlacement"/>
+    <Bug pattern="SIC_INNER_SHOULD_BE_STATIC"/>
+  </Match>
 </FindBugsFilter>
