@@ -18,6 +18,7 @@
 package org.apache.hadoop.ozone.om;
 
 import static java.nio.charset.StandardCharsets.UTF_8;
+import static org.apache.hadoop.ozone.OzoneConfigKeys.OZONE_BLOCK_DELETING_SERVICE_INTERVAL;
 import static org.apache.hadoop.ozone.OzoneConfigKeys.OZONE_CLIENT_WAIT_BETWEEN_RETRIES_MILLIS_DEFAULT;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -94,6 +95,10 @@ import org.slf4j.LoggerFactory;
 public class TestOzoneManagerHAWithStoppedNodes extends TestOzoneManagerHA {
   private static final org.slf4j.Logger LOG = LoggerFactory.getLogger(
       TestOzoneManagerHAWithStoppedNodes.class);
+
+  static {
+    setExtraClusterConfig(c -> c.set(OZONE_BLOCK_DELETING_SERVICE_INTERVAL, "2s"));
+  }
 
   /**
    * After restarting OMs we need to wait
@@ -437,9 +442,9 @@ public class TestOzoneManagerHAWithStoppedNodes extends TestOzoneManagerHA {
 
     // Check on leader OM Count.
     GenericTestUtils.waitFor(() ->
-        keyDeletingService.getRunCount().get() >= 2, 10000, 120000);
+        keyDeletingService.getRunCount().get() >= 2, 1000, 120000);
     GenericTestUtils.waitFor(() ->
-        keyDeletingService.getDeletedKeyCount().get() == 4, 10000, 120000);
+        keyDeletingService.getDeletedKeyCount().get() == 4, 1000, 120000);
 
     // Check delete table is empty or not on all OMs.
     getCluster().getOzoneManagersList().forEach((om) -> {
@@ -453,7 +458,7 @@ public class TestOzoneManagerHAWithStoppedNodes extends TestOzoneManagerHA {
             return false;
           }
         },
-            10000, 120000);
+            1000, 120000);
       } catch (Exception ex) {
         fail("TestOzoneManagerHAKeyDeletion failed");
       }
