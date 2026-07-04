@@ -131,6 +131,7 @@ public class TestRackAwarePlacement {
   }
 
   @Nested
+  @SuppressWarnings("SIC_INNER_SHOULD_BE_STATIC")
   @TestInstance(TestInstance.Lifecycle.PER_CLASS)
   class WithRacksAndHosts {
 
@@ -177,6 +178,7 @@ public class TestRackAwarePlacement {
   }
 
   @Nested
+  @SuppressWarnings("SIC_INNER_SHOULD_BE_STATIC")
   @TestInstance(TestInstance.Lifecycle.PER_CLASS)
   class WithRacksOnly {
 
@@ -217,6 +219,7 @@ public class TestRackAwarePlacement {
   }
 
   @Nested
+  @SuppressWarnings("SIC_INNER_SHOULD_BE_STATIC")
   @TestInstance(TestInstance.Lifecycle.PER_CLASS)
   class WithHostsOnly {
 
