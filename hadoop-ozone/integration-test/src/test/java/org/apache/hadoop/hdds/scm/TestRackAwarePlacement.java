@@ -114,6 +114,7 @@ public class TestRackAwarePlacement {
     applyReplicationSpeedupConfig(conf);
 
     try (MiniOzoneCluster cluster = MiniOzoneCluster.newBuilder(conf)
+        .setNumDatanodes(RACKS.length)
         .setRacks(RACKS)
         .setHosts(HOSTS)
         .build()) {
@@ -141,6 +142,7 @@ public class TestRackAwarePlacement {
       OzoneConfiguration conf = new OzoneConfiguration();
       applyReplicationSpeedupConfig(conf);
       cluster = MiniOzoneCluster.newBuilder(conf)
+          .setNumDatanodes(RACKS.length)
           .setRacks(RACKS)
           .setHosts(HOSTS)
           .build();
@@ -187,6 +189,7 @@ public class TestRackAwarePlacement {
       OzoneConfiguration conf = new OzoneConfiguration();
       applyReplicationSpeedupConfig(conf);
       cluster = MiniOzoneCluster.newBuilder(conf)
+          .setNumDatanodes(RACKS.length)
           .setRacks(RACKS)
           .build();
       cluster.waitForClusterToBeReady();
@@ -226,6 +229,7 @@ public class TestRackAwarePlacement {
     void init() throws Exception {
       OzoneConfiguration conf = new OzoneConfiguration();
       cluster = MiniOzoneCluster.newBuilder(conf)
+          .setNumDatanodes(HOSTS.length)
           .setHosts(HOSTS)
           .build();
       cluster.waitForClusterToBeReady();

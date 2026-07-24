@@ -511,6 +511,7 @@ public class MiniOzoneClusterImpl implements MiniOzoneCluster {
 
     @Override
     public MiniOzoneCluster build() throws IOException {
+      validateDatanodeConfiguration();
       DefaultMetricsSystem.setMiniClusterMode(true);
       DatanodeStoreCache.setMiniClusterMode();
       initializeConfiguration();

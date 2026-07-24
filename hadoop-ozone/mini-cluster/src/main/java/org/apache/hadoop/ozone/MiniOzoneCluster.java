@@ -383,16 +383,15 @@ public interface MiniOzoneCluster extends AutoCloseable {
     }
 
     /**
-     * Sets the rack location for each datanode.  The length of the array
-     * determines the number of datanodes to start.  Each entry is a rack
-     * path such as {@code "/rack0"}.
+     * Sets the rack location for each datanode.  Each entry is a rack path
+     * such as {@code "/rack0"}.  The length of the array must match the
+     * number of datanodes.
      *
      * @param racks rack path per datanode
      * @return this Builder
      */
     public Builder setRacks(String[] racks) {
       this.racks = Arrays.copyOf(racks, racks.length);
-      this.numOfDatanodes = racks.length;
       return this;
     }
 
@@ -408,8 +407,16 @@ public interface MiniOzoneCluster extends AutoCloseable {
      */
     public Builder setHosts(String[] hosts) {
       this.hosts = Arrays.copyOf(hosts, hosts.length);
-      this.numOfDatanodes = hosts.length;
       return this;
+    }
+
+    protected void validateDatanodeConfiguration() {
+      if (racks != null && racks.length != numOfDatanodes) {
+        throw new IllegalArgumentException("Number of racks must match the number of datanodes");
+      }
+      if (hosts != null && hosts.length != numOfDatanodes) {
+        throw new IllegalArgumentException("Number of hosts must match the number of datanodes");
+      }
     }
 
     public Builder addService(Service service) {
