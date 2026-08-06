@@ -331,7 +331,16 @@ public class TestRackAwarePlacement {
         boolean replacementAdded = current.stream()
             .anyMatch(replica -> !originalDns.contains(
                 replica.getDatanodeDetails()));
-        return current.size() >= 3 && deadReplicaRemoved && replacementAdded;
+        long rackCount = current.stream()
+            .map(replica -> replica.getDatanodeDetails().getNetworkLocation())
+            .distinct()
+            .count();
+
+        // Replica reports and placement repair are asynchronous. Wait for the
+        // replacement to be visible and for the resulting replica set to
+        // converge to the expected rack-aware placement.
+        return current.size() >= 3 && deadReplicaRemoved && replacementAdded
+            && rackCount >= 2;
       } catch (Exception e) {
         return false;
       }
