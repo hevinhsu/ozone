@@ -287,7 +287,9 @@ public class TestRackAwarePlacement {
     for (ContainerInfo c : scm.getContainerManager().getContainers()) {
       Set<ContainerReplica> r =
           scm.getContainerManager().getContainerReplicas(c.containerID());
-      if (r.size() >= 3) {
+      // Start with a normally replicated container so stopping one datanode
+      // must trigger creation of a replacement replica.
+      if (r.size() == 3) {
         targetContainer = c;
         replicas = r;
         break;
@@ -296,6 +298,9 @@ public class TestRackAwarePlacement {
     assertNotNull(targetContainer,
         "Should find a container with 3 replicas");
     ContainerID containerID = targetContainer.containerID();
+    Set<DatanodeDetails> originalDns = replicas.stream()
+        .map(ContainerReplica::getDatanodeDetails)
+        .collect(Collectors.toSet());
 
     DatanodeDetails stoppedDn =
         replicas.iterator().next().getDatanodeDetails();
@@ -315,9 +320,18 @@ public class TestRackAwarePlacement {
       try {
         Set<ContainerReplica> current = scm.getContainerManager()
             .getContainerReplicas(containerID);
-        return current.size() >= 3 && current.stream()
+
+        // Require actual replica reports instead of pending operations: the
+        // dead replica must be removed and a replica on a new datanode must
+        // appear. Starting with exactly 3 replicas makes this evidence that
+        // re-replication has completed.
+        boolean deadReplicaRemoved = current.stream()
             .noneMatch(replica -> stoppedDn.equals(
                 replica.getDatanodeDetails()));
+        boolean replacementAdded = current.stream()
+            .anyMatch(replica -> !originalDns.contains(
+                replica.getDatanodeDetails()));
+        return current.size() >= 3 && deadReplicaRemoved && replacementAdded;
       } catch (Exception e) {
         return false;
       }
