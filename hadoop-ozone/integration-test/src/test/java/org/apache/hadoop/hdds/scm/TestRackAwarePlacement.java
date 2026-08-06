@@ -28,6 +28,7 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Set;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.TimeoutException;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
 import org.apache.hadoop.hdds.client.RatisReplicationConfig;
@@ -298,9 +299,6 @@ public class TestRackAwarePlacement {
     assertNotNull(targetContainer,
         "Should find a container with 3 replicas");
     ContainerID containerID = targetContainer.containerID();
-    Set<DatanodeDetails> originalDns = replicas.stream()
-        .map(ContainerReplica::getDatanodeDetails)
-        .collect(Collectors.toSet());
 
     DatanodeDetails stoppedDn =
         replicas.iterator().next().getDatanodeDetails();
@@ -316,45 +314,48 @@ public class TestRackAwarePlacement {
       }
     }, 500, 30_000);
 
+    waitForRackAwareReplication(scm, containerID, stoppedDn);
+
+    Set<String> racks = getReplicaRacks(scm.getContainerManager()
+        .getContainerReplicas(containerID));
+
+    assertTrue(racks.size() >= 2,
+        "Container replicas after re-replication should span at least "
+            + "2 racks, but were on: " + racks);
+  }
+
+  private static void waitForRackAwareReplication(
+      StorageContainerManager scm, ContainerID containerID,
+      DatanodeDetails stoppedDn)
+      throws TimeoutException, InterruptedException {
     GenericTestUtils.waitFor(() -> {
       try {
         Set<ContainerReplica> current = scm.getContainerManager()
             .getContainerReplicas(containerID);
 
-        // Require actual replica reports instead of pending operations: the
-        // dead replica must be removed and a replica on a new datanode must
-        // appear. Starting with exactly 3 replicas makes this evidence that
-        // re-replication has completed.
+        // The test starts with exactly 3 replicas. Once the dead replica is
+        // removed, at least 3 actual replica reports imply that a replacement
+        // replica has been reported, regardless of pending operations.
         boolean deadReplicaRemoved = current.stream()
             .noneMatch(replica -> stoppedDn.equals(
                 replica.getDatanodeDetails()));
-        boolean replacementAdded = current.stream()
-            .anyMatch(replica -> !originalDns.contains(
-                replica.getDatanodeDetails()));
-        long rackCount = current.stream()
-            .map(replica -> replica.getDatanodeDetails().getNetworkLocation())
-            .distinct()
-            .count();
+        boolean replicaCountRestored = current.size() >= 3;
+        boolean rackAware = getReplicaRacks(current).size() >= 2;
 
         // Replica reports and placement repair are asynchronous. Wait for the
-        // replacement to be visible and for the resulting replica set to
-        // converge to the expected rack-aware placement.
-        return current.size() >= 3 && deadReplicaRemoved && replacementAdded
-            && rackCount >= 2;
+        // replacement and the resulting rack-aware placement to be visible.
+        return deadReplicaRemoved && replicaCountRestored && rackAware;
       } catch (Exception e) {
         return false;
       }
     }, 1_000, 60_000);
+  }
 
-    Set<String> racks = scm.getContainerManager()
-        .getContainerReplicas(containerID)
-        .stream()
-        .map(r -> r.getDatanodeDetails().getNetworkLocation())
+  private static Set<String> getReplicaRacks(
+      Set<ContainerReplica> replicas) {
+    return replicas.stream()
+        .map(replica -> replica.getDatanodeDetails().getNetworkLocation())
         .collect(Collectors.toSet());
-
-    assertTrue(racks.size() >= 2,
-        "Container replicas after re-replication should span at least "
-            + "2 racks, but were on: " + racks);
   }
 
   private void assertRackAssignments(MiniOzoneCluster cluster,
